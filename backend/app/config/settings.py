@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Crack Detection parameters
     CRACK_MODEL_PATH: Path = BASE_DIR / "ml" / "crack_detection" / "models" / "best.pt"
-    CRACK_CONFIDENCE_THRESHOLD: float = 0.40
+    CRACK_CONFIDENCE_THRESHOLD: float = 0.25
 
 
     model_config = ConfigDict(

@@ -54,9 +54,15 @@ class CrackService:
             return None
 
     @staticmethod
-    def merge_nearby_boxes(boxes: List[Tuple[int, int, int, int]], distance_thresh: int = 35) -> List[Tuple[int, int, int, int]]:
+    def merge_nearby_boxes(
+        boxes: List[Tuple[int, int, int, int]],
+        distance_thresh: int = 20,
+        max_box_w: Optional[int] = None,
+        max_box_h: Optional[int] = None,
+    ) -> List[Tuple[int, int, int, int]]:
         """
-        Merges adjacent or overlapping bounding boxes (x, y, w, h) into unified crack region boxes.
+        Merges adjacent or overlapping bounding boxes (x, y, w, h) into unified crack region boxes,
+        safeguarding against unbounded transitive growth across the entire image.
         """
         if not boxes:
             return []
@@ -86,7 +92,13 @@ class CrackService:
                     horiz_dist = max(0, max(x1_min, x2_min) - min(x1_max, x2_max))
                     vert_dist = max(0, max(y1_min, y2_min) - min(y1_max, y2_max))
 
-                    if horiz_dist <= distance_thresh and vert_dist <= distance_thresh:
+                    candidate_w = max(x1_max, x2_max) - min(x1_min, x2_min)
+                    candidate_h = max(y1_max, y2_max) - min(y1_min, y2_min)
+
+                    w_ok = max_box_w is None or candidate_w <= max_box_w
+                    h_ok = max_box_h is None or candidate_h <= max_box_h
+
+                    if horiz_dist <= distance_thresh and vert_dist <= distance_thresh and w_ok and h_ok:
                         x1_min = min(x1_min, x2_min)
                         y1_min = min(y1_min, y2_min)
                         x1_max = max(x1_max, x2_max)
@@ -112,13 +124,14 @@ class CrackService:
         """
         Advanced Computer Vision Crack & Surface Defect Detector.
         Integrates CLAHE contrast enhancement, multi-scale Black Top-Hat filtering,
-        directional line dilation, contour geometry extraction, and proximity box merging.
+        straight tile grout line suppression, directional edge dilation, contour geometry extraction,
+        and proximity box merging.
         """
         h, w = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img.copy()
 
         # 1. CLAHE Contrast Enhancement to boost crack contrast against tile surfaces
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
         
         # Adjust sensitivity parameters
@@ -126,46 +139,66 @@ class CrackService:
             canny_low, canny_high = 15, 60
             min_area = min_area_override if min_area_override is not None else 6.0
             min_perimeter = 8.0
-            tophat_thresh_val = 8
-            merge_dist = 40
+            tophat_thresh_val = 10
+            merge_dist = 18
         elif sensitivity == "low":
             canny_low, canny_high = 40, 120
             min_area = min_area_override if min_area_override is not None else 80.0
             min_perimeter = 35.0
-            tophat_thresh_val = 20
-            merge_dist = 25
+            tophat_thresh_val = 22
+            merge_dist = 14
         else: # "balanced"
             canny_low, canny_high = 25, 80
             min_area = min_area_override if min_area_override is not None else 18.0
             min_perimeter = 15.0
-            tophat_thresh_val = 12
-            merge_dist = 30
+            tophat_thresh_val = 15
+            merge_dist = 16
 
         # 2. Multi-Scale Black Top-Hat Filter to extract dark crack fissures of varying widths
-        tophat_small = cv2.morphologyEx(enhanced, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7)))
-        tophat_large = cv2.morphologyEx(enhanced, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (17, 17)))
+        tophat_small = cv2.morphologyEx(enhanced, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
+        tophat_large = cv2.morphologyEx(enhanced, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (13, 13)))
         tophat_combined = cv2.add(tophat_small, tophat_large)
         _, tophat_binary = cv2.threshold(tophat_combined, tophat_thresh_val, 255, cv2.THRESH_BINARY)
 
-        # 3. Bilateral Filter + Canny Edge Detection
+        # 3. Detect & Remove Straight Tile Grout Lines (prevents crack contours from fusing into tile joints)
+        kernel_v_long = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 21))
+        kernel_h_long = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 1))
+
+        straight_v = cv2.morphologyEx(tophat_binary, cv2.MORPH_OPEN, kernel_v_long)
+        straight_h = cv2.morphologyEx(tophat_binary, cv2.MORPH_OPEN, kernel_h_long)
+        grout_mask = cv2.add(straight_v, straight_h)
+        grout_mask_dilated = cv2.dilate(grout_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+
+        # Subtract straight grout lines from binary map
+        tophat_no_grout = cv2.subtract(tophat_binary, grout_mask_dilated)
+
+        # Zero out outer 2% margin to suppress frame edge crop lines
+        margin_x = int(w * 0.02)
+        margin_y = int(h * 0.02)
+        tophat_no_grout[:margin_y, :] = 0
+        tophat_no_grout[-margin_y:, :] = 0
+        tophat_no_grout[:, :margin_x] = 0
+        tophat_no_grout[:, -margin_x:] = 0
+
+        # 4. Bilateral Filter + Canny Edge Detection
         blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
         edges = cv2.Canny(blurred, canny_low, canny_high)
 
         # Directional Line Dilation to connect broken horizontal, vertical, and diagonal crack strokes
-        kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 3))
-        kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 9))
+        kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
+        kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
         dilated_h = cv2.dilate(edges, kernel_h, iterations=1)
         dilated_v = cv2.dilate(edges, kernel_v, iterations=1)
         edges_connected = cv2.bitwise_or(dilated_h, dilated_v)
 
-        # Fuse Top-Hat and Canny responses
-        combined_binary = cv2.bitwise_or(tophat_binary, edges_connected)
+        # Fuse Top-Hat (no grout) and Canny responses
+        combined_binary = cv2.bitwise_or(tophat_no_grout, edges_connected)
 
         # Morphological Closing to seal unified crack regions
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         closed = cv2.morphologyEx(combined_binary, cv2.MORPH_CLOSE, kernel_close, iterations=1)
 
-        # 4. Extract raw contours
+        # 5. Extract raw contours
         contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         raw_boxes: List[Tuple[int, int, int, int]] = []
@@ -181,7 +214,7 @@ class CrackService:
             box_area = bw * bh
 
             # Filter out tiny noise dots or oversized full-frame rectangles
-            if (max_dim < 12 and perimeter < min_perimeter) or box_area > max_allowed_area:
+            if (max_dim < 8 and perimeter < min_perimeter) or box_area > max_allowed_area:
                 continue
 
             # Filter out outer image border rectangles (touching 3 or 4 image edges)
@@ -203,9 +236,12 @@ class CrackService:
 
             raw_boxes.append((x, y, bw, bh))
 
-
-        # 5. Merge adjacent and overlapping crack bounding boxes into unified crack regions
-        merged_boxes = cls.merge_nearby_boxes(raw_boxes, distance_thresh=merge_dist)
+        # 6. Merge adjacent and overlapping crack bounding boxes with bounded max dimensions
+        max_box_w = int(w * 0.45)
+        max_box_h = int(h * 0.35)
+        merged_boxes = cls.merge_nearby_boxes(
+            raw_boxes, distance_thresh=merge_dist, max_box_w=max_box_w, max_box_h=max_box_h
+        )
 
         annotated = img.copy()
         detections: List[CrackDetectionItemSchema] = []
