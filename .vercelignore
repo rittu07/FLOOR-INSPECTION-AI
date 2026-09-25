@@ -1,0 +1,7 @@
+# The FastAPI + PyTorch backend is hosted separately (too large for Vercel functions)
+backend/
+runs/
+captures/
+outputs/
+debug/
+*.pt
