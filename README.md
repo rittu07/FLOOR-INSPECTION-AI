@@ -69,6 +69,33 @@ python backend/ml/crack_detection/scripts/predict.py --source sample.jpg --conf 
 
 ---
 
+## Set Up on a New Machine (Windows)
+
+Prerequisites: [Git](https://git-scm.com), [Node.js 20+](https://nodejs.org), [Python 3.11](https://python.org) (tick "Add to PATH").
+
+```bash
+git clone https://github.com/rittu07/FLOOR-INSPECTION-AI
+cd FLOOR-INSPECTION-AI
+powershell -ExecutionPolicy Bypass -File setup.ps1
+powershell -ExecutionPolicy Bypass -File start.ps1
+```
+
+`setup.ps1` installs frontend packages, creates `backend/.venv` with PyTorch (CUDA build when an NVIDIA GPU is
+detected, CPU build otherwise), installs backend requirements and creates `backend/.env`.
+`start.ps1` opens the backend (http://localhost:8000/docs) and frontend (http://localhost:3000) in separate windows.
+
+- **Trained model**: the deployed crack model `backend/ml/crack_detection/models/best.pt` (~23 MB, optimizer
+  stripped) is versioned in git, so a clone is ready to detect cracks. Other `*.pt` files stay ignored.
+- **Datasets** are not in git; rebuild them only if you want to retrain:
+  `backend.venvScriptspython backendmlcrack_detectionscriptsuild_floor_dataset.py` (training needs an NVIDIA GPU).
+- **Syncing between machines**: `git pull` before you start, `git push` when you finish. After retraining, strip and
+  commit the new model:
+  ```bash
+  backend.venvScriptspython -c "from ultralytics.utils.torch_utils import strip_optimizer; strip_optimizer('backend/ml/crack_detection/runs/crack_seg_v2/weights/best.pt', s='backend/ml/crack_detection/models/best.pt')"
+  ```
+
+---
+
 ## Running the Application
 
 ### 1. Start FastAPI Backend

@@ -68,3 +68,6 @@ runs/
 backend/ml/crack_detection/datasets/crack-seg/
 backend/ml/crack_detection/datasets/floor_aug/
 backend/ml/crack_detection/train_*.log
+
+# Deployed crack model (stripped, ~23 MB) is versioned so clones and cloud builds get it
+!backend/ml/crack_detection/models/best.pt

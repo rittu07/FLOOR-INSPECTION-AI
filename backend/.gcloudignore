@@ -1,0 +1,18 @@
+# Cloud Run source upload (gcloud run deploy --source). Without this file gcloud falls back to
+# .gitignore, which excludes *.pt and would drop the trained model.
+.gcloudignore
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+.env
+captures/
+outputs/
+debug/
+ml/crack_detection/datasets/
+ml/crack_detection/runs/
+ml/crack_detection/models/*
+!ml/crack_detection/models/best.pt
+*.log
+tests/
