@@ -12,7 +12,9 @@ services:
       - backend_outputs:/app/outputs
       - backend_captures:/app/captures
     environment:
-      - CORS_ORIGINS=http://localhost:3000,http://localhost,https://yourdomain.com
+      - PORT=8000
+      - FRONTEND_URL=http://localhost:3000
+      - CORS_ORIGINS=http://localhost,https://yourdomain.com
       - CRACK_CONFIDENCE_THRESHOLD=0.25
     restart: always
 
