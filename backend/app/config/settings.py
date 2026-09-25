@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     # Extra allowed browser origins, comma-separated (e.g. "https://my-app.vercel.app,https://inspect.example.com")
     CORS_ORIGINS: str = ""
+    # Regex of additional allowed origins; default covers the Vercel production and preview deployments
+    CORS_ORIGIN_REGEX: str = r"^https://floor-inspection-ai(-[a-z0-9-]+)?\.vercel\.app$"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 

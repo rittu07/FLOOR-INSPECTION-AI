@@ -39,9 +39,13 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets an allowed hosted HTTPS frontend (e.g. Vercel) call this backend on localhost/LAN
+    # (Chrome Private Network Access preflight)
+    allow_private_network=True,
 )
 
 # Serve static images for captured frames and generated mosaics

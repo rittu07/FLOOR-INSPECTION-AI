@@ -168,6 +168,24 @@ async function imageInputToBlob(imageInput: string | Blob): Promise<Blob> {
 }
 
 /**
+ * Explains the common hosted-frontend failure: a deployed site (e.g. on Vercel) calling a backend
+ * that only runs on this computer's localhost.
+ */
+function describeConnectionError(message: string): string {
+  const apiIsLocal = /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE_URL);
+  const pageIsLocal =
+    typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (apiIsLocal && !pageIsLocal) {
+    return (
+      `Cannot reach the inspection backend at ${API_BASE_URL}. This hosted app runs the AI model on a ` +
+      'separate backend: start it on this computer (and allow local network access if the browser asks), ' +
+      'or set NEXT_PUBLIC_API_URL to a publicly hosted backend.'
+    );
+  }
+  return `${message} (backend: ${API_BASE_URL})`;
+}
+
+/**
  * Helper to fetch from FastAPI backend and handle structured error responses.
  */
 async function fetchApi<T>(
@@ -209,7 +227,7 @@ async function fetchApi<T>(
     return { data: json as T, error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Backend connection unavailable';
-    return { data: null, error: message, errorDetails: null };
+    return { data: null, error: describeConnectionError(message), errorDetails: null };
   }
 }
 
