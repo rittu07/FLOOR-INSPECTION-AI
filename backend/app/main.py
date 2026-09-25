@@ -33,6 +33,7 @@ origins = [
     settings.FRONTEND_URL,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    *[o.strip().rstrip("/") for o in settings.CORS_ORIGINS.split(",") if o.strip()],
 ]
 
 app.add_middleware(

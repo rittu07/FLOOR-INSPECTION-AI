@@ -37,7 +37,8 @@ def run_training(
 
     if resume:
         yolo_model = YOLO(str(RUNS_DIR / name / "weights" / "last.pt"))
-        results = yolo_model.train(resume=True)
+        # workers/batch may be lowered on resume to recover from out-of-memory crashes
+        results = yolo_model.train(resume=True, workers=workers)
     else:
         yolo_model = YOLO(model)
         results = yolo_model.train(

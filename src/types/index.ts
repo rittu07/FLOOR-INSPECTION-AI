@@ -126,6 +126,8 @@ export interface Point2D {
   y: number;
 }
 
+export type CrackSeverity = 'low' | 'medium' | 'high' | 'unknown';
+
 export interface LocalizedCrack {
   id: string;
   frameId: string;
@@ -133,6 +135,12 @@ export interface LocalizedCrack {
   bbox: BoundingBox;
   mosaicPosition: Point2D;
   mosaicPolygon: Point2D[];
+  mosaicOutline: Point2D[];
+  lengthPx: number | null;
+  maxWidthPx: number | null;
+  lengthMm: number | null;
+  maxWidthMm: number | null;
+  severity: CrackSeverity;
   isOutOfBounds: boolean;
   possibleDuplicateOf?: string | null;
 }
@@ -146,6 +154,7 @@ export interface LocalizationResult {
   totalCracks: number;
   localizedCracks: number;
   averageConfidence: number;
+  mmPerPixel: number | null;
   cracks: LocalizedCrack[];
 }
 

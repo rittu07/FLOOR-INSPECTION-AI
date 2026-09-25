@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { LocalizedCrack } from '@/types';
-import { AlertTriangle, CheckCircle2, Crosshair, HelpCircle, Image as ImageIcon, MapPin, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Crosshair, HelpCircle, Image as ImageIcon, MapPin, Ruler, X } from 'lucide-react';
+import { SEVERITY_STYLE, formatSize } from './severity';
 
 interface CrackDetailsProps {
   selectedCrack: LocalizedCrack | null;
@@ -29,9 +30,16 @@ export const CrackDetails: React.FC<CrackDetailsProps> = ({ selectedCrack, onClo
     bbox,
     mosaicPosition,
     mosaicPolygon,
+    mosaicOutline,
+    lengthPx,
+    maxWidthPx,
+    lengthMm,
+    maxWidthMm,
+    severity,
     isOutOfBounds,
     possibleDuplicateOf,
   } = selectedCrack;
+  const severityStyle = SEVERITY_STYLE[severity];
 
   const confPercentage = Math.round(confidence * 100);
 
@@ -82,6 +90,39 @@ export const CrackDetails: React.FC<CrackDetailsProps> = ({ selectedCrack, onClo
 
         {/* Metric Cards Grid */}
         <div className="space-y-3 text-xs">
+          {/* Severity & Measured Size */}
+          <div className="p-3 rounded-lg bg-gray-800/60 border border-gray-700/50">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-gray-400">
+                <Ruler className="w-4 h-4 text-cyan-400" />
+                <span className="font-medium">Severity & Size</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${severityStyle.badge}`}>
+                {severityStyle.label}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center font-mono text-xs">
+              <div className="p-1.5 rounded bg-gray-900 border border-gray-800">
+                <span className="text-gray-500 text-[10px] block">LENGTH</span>
+                <span className="text-cyan-300 font-bold">{formatSize(lengthPx, lengthMm)}</span>
+              </div>
+              <div className="p-1.5 rounded bg-gray-900 border border-gray-800">
+                <span className="text-gray-500 text-[10px] block">MAX WIDTH</span>
+                <span className="text-cyan-300 font-bold">{formatSize(maxWidthPx, maxWidthMm)}</span>
+              </div>
+            </div>
+            {severity === 'unknown' && (
+              <p className="text-[10px] text-gray-500 mt-2">
+                No crack mask available (heuristic detection), so size could not be measured.
+              </p>
+            )}
+            {severity !== 'unknown' && lengthMm == null && (
+              <p className="text-[10px] text-gray-500 mt-2">
+                Sizes in mosaic pixels. Set MOSAIC_MM_PER_PIXEL on the backend for millimetres.
+              </p>
+            )}
+          </div>
+
           {/* Confidence Bar */}
           <div className="p-3 rounded-lg bg-gray-800/60 border border-gray-700/50">
             <div className="flex justify-between items-center mb-1.5">
@@ -130,6 +171,9 @@ export const CrackDetails: React.FC<CrackDetailsProps> = ({ selectedCrack, onClo
             <div className="flex items-center gap-2 text-gray-400 mb-2">
               <Crosshair className="w-4 h-4 text-amber-400" />
               <span className="font-medium">Perspective Quadrilateral (4 Corners)</span>
+              {mosaicOutline.length > 0 && (
+                <span className="ml-auto text-[10px] font-mono text-gray-500">outline: {mosaicOutline.length} pts</span>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
               {mosaicPolygon.map((pt, i) => (

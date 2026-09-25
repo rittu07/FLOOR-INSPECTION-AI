@@ -5,6 +5,7 @@ import { MosaicMetadata, LocalizedCrack, LocalizationResult } from '@/types';
 import { getMosaicMetadataApi, processMosaicLocalizationApi } from '@/lib/api';
 import { DamageMap } from '@/components/damage-map/DamageMap';
 import { CrackDetails } from '@/components/damage-map/CrackDetails';
+import { CrackList } from '@/components/damage-map/CrackList';
 import { LocalizationStats } from '@/components/damage-map/LocalizationStats';
 import { LocalizationStatus } from '@/components/damage-map/LocalizationStatus';
 import { Map, Layers, RefreshCw, AlertCircle } from 'lucide-react';
@@ -14,6 +15,12 @@ export default function DamageMapPage() {
   const [mosaicMetadata, setMosaicMetadata] = useState<MosaicMetadata | null>(null);
   const [localizationResult, setLocalizationResult] = useState<LocalizationResult | null>(null);
   const [selectedCrack, setSelectedCrack] = useState<LocalizedCrack | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ id: string; nonce: number } | null>(null);
+
+  const pickCrackFromList = (crack: LocalizedCrack) => {
+    setSelectedCrack(crack);
+    setFocusRequest((prev) => ({ id: crack.id, nonce: (prev?.nonce ?? 0) + 1 }));
+  };
 
   const [status, setStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
   const [confThreshold, setConfThreshold] = useState<number>(0.25);
@@ -146,6 +153,9 @@ export default function DamageMapPage() {
               cracks={localizationResult?.cracks || []}
               selectedCrack={selectedCrack}
               onSelectCrack={setSelectedCrack}
+              focusRequest={focusRequest}
+              mmPerPixel={localizationResult?.mmPerPixel}
+              exportName={`damage-map-${localizationResult?.mosaicId || mosaicMetadata?.id || 'mosaic'}`}
             />
           ) : (
             <div className="h-[450px] rounded-xl bg-gray-900/60 border border-gray-800/80 flex flex-col items-center justify-center text-center p-6 backdrop-blur-md">
@@ -158,9 +168,16 @@ export default function DamageMapPage() {
           )}
         </div>
 
-        {/* Side Telemetry Inspector (1 col) */}
-        <div className="lg:col-span-1 min-h-[400px]">
-          <CrackDetails selectedCrack={selectedCrack} onClose={() => setSelectedCrack(null)} />
+        {/* Side column: crack register + telemetry inspector (1 col) */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <CrackList
+            cracks={localizationResult?.cracks || []}
+            selectedCrack={selectedCrack}
+            onPick={pickCrackFromList}
+          />
+          <div className="flex-1 min-h-[320px]">
+            <CrackDetails selectedCrack={selectedCrack} onClose={() => setSelectedCrack(null)} />
+          </div>
         </div>
       </div>
     </div>

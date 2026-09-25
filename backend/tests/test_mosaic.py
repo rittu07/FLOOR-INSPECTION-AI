@@ -137,3 +137,18 @@ def test_intermediate_failure_reporting():
     assert data["code"] == "STITCHING_FAILED"
     assert data["failed_step"] == 2
     assert data["successful_images"] == 2
+
+
+def test_warp_and_stitch_keeps_non_overlapping_base_content():
+    """Regression: blending must keep the base image outside the overlap (uint8 mask overflow bug)."""
+    from app.services.mosaic_service import MosaicService
+
+    rng = np.random.default_rng(0)
+    scene = rng.integers(20, 235, size=(300, 700, 3), dtype=np.uint8)
+    left, right = scene[:, :400], scene[:, 300:]
+    H = np.array([[1, 0, 300], [0, 1, 0], [0, 0, 1]], dtype=np.float64)  # right frame sits 300 px to the right
+
+    mosaic, _, _ = MosaicService.warp_and_stitch_with_transforms(left, right, H)
+
+    assert mosaic.shape[1] >= 695, f"stitched width {mosaic.shape[1]} lost the base image"
+    assert np.abs(mosaic[:, :250].astype(int) - scene[:, :250].astype(int)).mean() < 2

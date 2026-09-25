@@ -18,6 +18,7 @@ from app.models.schemas import (
     CrackDetectionItemSchema,
     BoundingBoxSchema,
     CrackSummarySchema,
+    Point2DSchema,
 )
 
 logger = logging.getLogger("floor_inspection.crack_service")
@@ -54,6 +55,41 @@ class CrackService:
         except Exception as e:
             logger.error(f"Failed to load YOLO model: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def measure_crack_geometry(outline: np.ndarray) -> Tuple[List[Point2DSchema], Optional[float], Optional[float]]:
+        """
+        Measures a crack from its mask outline (N x 2 image-pixel polygon).
+        Returns (simplified outline, centerline length px, max width px). Length is the skeleton pixel
+        count; width is twice the largest distance-transform value on the skeleton.
+        """
+        if outline is None or len(outline) < 3:
+            return [], None, None
+
+        simplified = cv2.approxPolyDP(outline.astype(np.float32).reshape(-1, 1, 2), 1.0, True).reshape(-1, 2)
+        outline_pts = [Point2DSchema(x=round(float(x), 1), y=round(float(y), 1)) for x, y in simplified]
+
+        x0, y0 = np.floor(outline.min(axis=0)).astype(int) - 2
+        x1, y1 = np.ceil(outline.max(axis=0)).astype(int) + 2
+        mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), dtype=np.uint8)
+        cv2.fillPoly(mask, [np.round(outline - [x0, y0]).astype(np.int32)], 255)
+        if cv2.countNonZero(mask) == 0:
+            return outline_pts, None, None
+
+        # Morphological skeleton (no opencv-contrib dependency)
+        skeleton = np.zeros_like(mask)
+        work = mask.copy()
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        while cv2.countNonZero(work):
+            eroded = cv2.erode(work, kernel)
+            skeleton = cv2.bitwise_or(skeleton, cv2.subtract(work, cv2.dilate(eroded, kernel)))
+            work = eroded
+
+        dist = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+        skel_px = skeleton > 0
+        length_px = float(np.count_nonzero(skel_px))
+        max_width_px = float(dist[skel_px].max() * 2.0) if length_px else None
+        return outline_pts, round(length_px, 1), (round(max_width_px, 1) if max_width_px else None)
 
     @staticmethod
     def merge_nearby_boxes(
@@ -341,7 +377,8 @@ class CrackService:
                     boxes = r.boxes
                     
                     if boxes is not None and len(boxes) > 0:
-                        for box in boxes:
+                        mask_polys = r.masks.xy if getattr(r, "masks", None) is not None else None
+                        for box_idx, box in enumerate(boxes):
                             cls_id = int(box.cls[0].item()) if box.cls is not None else 0
                             confidence = float(box.conf[0].item()) if box.conf is not None else 0.0
                             
@@ -356,6 +393,10 @@ class CrackService:
                             if label_name.lower() not in ["crack", "fracture", "defect", "damage"]:
                                 continue
 
+                            outline, length_px, max_width_px = [], None, None
+                            if mask_polys is not None and box_idx < len(mask_polys):
+                                outline, length_px, max_width_px = self.measure_crack_geometry(mask_polys[box_idx])
+
                             detections.append(
                                 CrackDetectionItemSchema(
                                     id=f"crack-{uuid.uuid4().hex[:8]}",
@@ -368,6 +409,9 @@ class CrackService:
                                         width=round(w_px, 2),
                                         height=round(h_px, 2),
                                     ),
+                                    outline=outline,
+                                    length_px=length_px,
+                                    max_width_px=max_width_px,
                                 )
                             )
 

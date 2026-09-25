@@ -19,7 +19,10 @@ export const LocalizationStats: React.FC<LocalizationStatsProps> = ({ result }) 
     totalCracks,
     localizedCracks,
     averageConfidence,
+    cracks,
   } = result;
+  const highCount = cracks.filter((c) => c.severity === 'high').length;
+  const mediumCount = cracks.filter((c) => c.severity === 'medium').length;
 
   const avgConfPercent = Math.round(averageConfidence * 100);
 
@@ -54,7 +57,9 @@ export const LocalizationStats: React.FC<LocalizationStatsProps> = ({ result }) 
           <span>Total Cracks</span>
         </div>
         <div className="text-xl font-extrabold text-red-400 font-mono">{totalCracks}</div>
-        <div className="text-[10px] text-gray-500 mt-0.5">YOLO Detections</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">
+          <span className="text-red-400">{highCount} high</span> · <span className="text-amber-400">{mediumCount} medium</span>
+        </div>
       </div>
 
       {/* Localized Cracks */}

@@ -106,6 +106,12 @@ export interface BackendLocalizedCrack {
   bbox: { x: number; y: number; width: number; height: number };
   mosaic_position: { x: number; y: number };
   mosaic_polygon: Array<{ x: number; y: number }>;
+  mosaic_outline?: Array<{ x: number; y: number }>;
+  length_px?: number | null;
+  max_width_px?: number | null;
+  length_mm?: number | null;
+  max_width_mm?: number | null;
+  severity?: string;
   is_out_of_bounds: boolean;
   possible_duplicate_of?: string | null;
 }
@@ -119,7 +125,27 @@ export interface BackendLocalizationResponse {
   total_cracks: number;
   localized_cracks: number;
   average_confidence: number;
+  mm_per_pixel?: number | null;
   cracks: BackendLocalizedCrack[];
+}
+
+function mapLocalizedCrack(c: BackendLocalizedCrack): LocalizedCrack {
+  return {
+    id: c.id,
+    frameId: c.frame_id,
+    confidence: c.confidence,
+    bbox: c.bbox,
+    mosaicPosition: c.mosaic_position,
+    mosaicPolygon: c.mosaic_polygon,
+    mosaicOutline: c.mosaic_outline ?? [],
+    lengthPx: c.length_px ?? null,
+    maxWidthPx: c.max_width_px ?? null,
+    lengthMm: c.length_mm ?? null,
+    maxWidthMm: c.max_width_mm ?? null,
+    severity: (['low', 'medium', 'high'].includes(c.severity ?? '') ? c.severity : 'unknown') as LocalizedCrack['severity'],
+    isOutOfBounds: c.is_out_of_bounds,
+    possibleDuplicateOf: c.possible_duplicate_of,
+  };
 }
 
 /**
@@ -415,16 +441,8 @@ export async function localizeDetectionsApi(
       totalCracks: data.total_cracks,
       localizedCracks: data.localized_cracks,
       averageConfidence: data.average_confidence,
-      cracks: (data.cracks || []).map((c) => ({
-        id: c.id,
-        frameId: c.frame_id,
-        confidence: c.confidence,
-        bbox: c.bbox,
-        mosaicPosition: c.mosaic_position,
-        mosaicPolygon: c.mosaic_polygon,
-        isOutOfBounds: c.is_out_of_bounds,
-        possibleDuplicateOf: c.possible_duplicate_of,
-      })),
+      mmPerPixel: data.mm_per_pixel ?? null,
+      cracks: (data.cracks || []).map(mapLocalizedCrack),
     };
     return { data: result, rawData: data, error: null };
   }
@@ -455,16 +473,8 @@ export async function processMosaicLocalizationApi(mosaicId: string, confThresho
       totalCracks: data.total_cracks,
       localizedCracks: data.localized_cracks,
       averageConfidence: data.average_confidence,
-      cracks: (data.cracks || []).map((c) => ({
-        id: c.id,
-        frameId: c.frame_id,
-        confidence: c.confidence,
-        bbox: c.bbox,
-        mosaicPosition: c.mosaic_position,
-        mosaicPolygon: c.mosaic_polygon,
-        isOutOfBounds: c.is_out_of_bounds,
-        possibleDuplicateOf: c.possible_duplicate_of,
-      })),
+      mmPerPixel: data.mm_per_pixel ?? null,
+      cracks: (data.cracks || []).map(mapLocalizedCrack),
     };
     return { data: result, rawData: data, error: null };
   }

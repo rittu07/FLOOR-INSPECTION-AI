@@ -68,6 +68,10 @@ class ErrorResponse(BaseModel):
     failed_step: Optional[int] = None
     successful_images: Optional[int] = None
 
+class Point2DSchema(BaseModel):
+    x: float
+    y: float
+
 class BoundingBoxSchema(BaseModel):
     x: float = Field(..., description="Top-left X coordinate in pixels")
     y: float = Field(..., description="Top-left Y coordinate in pixels")
@@ -80,6 +84,9 @@ class CrackDetectionItemSchema(BaseModel):
     label: str = "Crack"
     confidence: float
     box: BoundingBoxSchema
+    outline: List[Point2DSchema] = Field(default_factory=list, description="Crack mask outline in image pixels (segmentation models)")
+    length_px: Optional[float] = Field(None, description="Crack centerline length in image pixels")
+    max_width_px: Optional[float] = Field(None, description="Maximum crack width in image pixels")
 
 class CrackSummarySchema(BaseModel):
     cracks_detected: int
@@ -98,10 +105,6 @@ class CrackDetectionResponse(BaseModel):
     highest_confidence: float
     processing_time_seconds: float
 
-class Point2DSchema(BaseModel):
-    x: float
-    y: float
-
 class LocalizedCrackItemSchema(BaseModel):
     id: str
     frame_id: str
@@ -109,6 +112,12 @@ class LocalizedCrackItemSchema(BaseModel):
     bbox: BoundingBoxSchema
     mosaic_position: Point2DSchema
     mosaic_polygon: List[Point2DSchema]
+    mosaic_outline: List[Point2DSchema] = Field(default_factory=list, description="Crack mask outline in mosaic pixels")
+    length_px: Optional[float] = Field(None, description="Crack length in mosaic pixels")
+    max_width_px: Optional[float] = Field(None, description="Maximum crack width in mosaic pixels")
+    length_mm: Optional[float] = None
+    max_width_mm: Optional[float] = None
+    severity: str = Field("unknown", description="low | medium | high | unknown")
     is_out_of_bounds: bool = False
     possible_duplicate_of: Optional[str] = None
 
@@ -116,6 +125,9 @@ class LocalizationMapRequestItem(BaseModel):
     frame_id: str
     confidence: float
     bbox: BoundingBoxSchema
+    outline: List[Point2DSchema] = Field(default_factory=list)
+    length_px: Optional[float] = None
+    max_width_px: Optional[float] = None
 
 class LocalizationMapRequest(BaseModel):
     mosaic_id: str
@@ -134,6 +146,7 @@ class LocalizationResponse(BaseModel):
     total_cracks: int
     localized_cracks: int
     average_confidence: float
+    mm_per_pixel: Optional[float] = None
     cracks: List[LocalizedCrackItemSchema]
 
 

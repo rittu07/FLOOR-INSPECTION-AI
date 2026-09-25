@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 
 from app.config.settings import settings
 from app.services.mosaic_service import MosaicService
-from app.services.crack_service import CrackService
+from app.services.crack_service import crack_service
 from app.models.schemas import (
     Point2DSchema,
     BoundingBoxSchema,
@@ -21,6 +21,11 @@ from app.models.schemas import (
 
 logger = logging.getLogger("floor_inspection.localization")
 DUPLICATE_DISTANCE_PX = 30.0  # Threshold in pixels to flag duplicate detections across overlapping frames
+
+# Severity bands by maximum crack width. mm bands follow common concrete/tile crack classes
+# (<1 mm hairline, 1-3 mm moderate, >3 mm severe); px bands apply when the mosaic is uncalibrated.
+SEVERITY_WIDTH_MM = (1.0, 3.0)
+SEVERITY_WIDTH_PX = (4.0, 10.0)
 
 class CrackLocalizationService:
     @staticmethod
@@ -62,6 +67,27 @@ class CrackLocalizationService:
         polygon_transformed = cls.transform_points(corners, H)
         
         return center_transformed, polygon_transformed
+
+    @classmethod
+    def local_scale(cls, point: Tuple[float, float], H: np.ndarray) -> float:
+        """Linear scale factor of homography H around a source point (sqrt of the local Jacobian area)."""
+        x, y = point
+        p0, px, py = cls.transform_points([(x, y), (x + 1.0, y), (x, y + 1.0)], H)
+        jx = (px.x - p0.x, px.y - p0.y)
+        jy = (py.x - p0.x, py.y - p0.y)
+        return math.sqrt(abs(jx[0] * jy[1] - jx[1] * jy[0]))
+
+    @staticmethod
+    def classify_severity(max_width_px: Optional[float], max_width_mm: Optional[float]) -> str:
+        if max_width_mm is not None:
+            low, high = SEVERITY_WIDTH_MM
+            width = max_width_mm
+        elif max_width_px is not None:
+            low, high = SEVERITY_WIDTH_PX
+            width = max_width_px
+        else:
+            return "unknown"
+        return "low" if width < low else "medium" if width <= high else "high"
 
     @staticmethod
     def check_out_of_bounds(point: Point2DSchema, mosaic_w: int, mosaic_h: int) -> bool:
@@ -129,6 +155,13 @@ class CrackLocalizationService:
                 )
 
             center_m, polygon_m = cls.transform_bbox(det.bbox, H_mat)
+            outline_m = cls.transform_points([(pt.x, pt.y) for pt in det.outline], H_mat)
+            scale = cls.local_scale((det.bbox.x + det.bbox.width / 2.0, det.bbox.y + det.bbox.height / 2.0), H_mat)
+            length_m = round(det.length_px * scale, 1) if det.length_px is not None else None
+            width_m = round(det.max_width_px * scale, 1) if det.max_width_px is not None else None
+            mm_per_px = settings.MOSAIC_MM_PER_PIXEL or None
+            length_mm = round(length_m * mm_per_px, 1) if (mm_per_px and length_m is not None) else None
+            width_mm = round(width_m * mm_per_px, 2) if (mm_per_px and width_m is not None) else None
             out_of_bounds = cls.check_out_of_bounds(center_m, metadata.width, metadata.height)
 
             # Spatial proximity duplicate detection
@@ -148,6 +181,12 @@ class CrackLocalizationService:
                 bbox=det.bbox,
                 mosaic_position=center_m,
                 mosaic_polygon=polygon_m,
+                mosaic_outline=outline_m,
+                length_px=length_m,
+                max_width_px=width_m,
+                length_mm=length_mm,
+                max_width_mm=width_mm,
+                severity=cls.classify_severity(width_m, width_mm),
                 is_out_of_bounds=out_of_bounds,
                 possible_duplicate_of=duplicate_id,
             )
@@ -168,6 +207,7 @@ class CrackLocalizationService:
             total_cracks=len(detections),
             localized_cracks=len(localized_items),
             average_confidence=avg_conf,
+            mm_per_pixel=settings.MOSAIC_MM_PER_PIXEL or None,
             cracks=localized_items,
         )
 
@@ -197,12 +237,17 @@ class CrackLocalizationService:
 
             try:
                 # Run YOLO crack detection on source frame
-                crack_res = CrackService.detect_cracks(file_path, conf_threshold=confidence_threshold)
+                crack_res = crack_service.detect_cracks(
+                    file_path, filename=clean_name, confidence_threshold=confidence_threshold
+                )
                 for det in crack_res.detections:
                     req_item = LocalizationMapRequestItem(
                         frame_id=frame_id,
                         confidence=det.confidence,
                         bbox=det.box,
+                        outline=det.outline,
+                        length_px=det.length_px,
+                        max_width_px=det.max_width_px,
                     )
                     all_detections.append(req_item)
             except Exception as e:

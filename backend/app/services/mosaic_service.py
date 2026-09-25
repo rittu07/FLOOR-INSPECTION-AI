@@ -174,16 +174,15 @@ class MosaicService:
         img1_y = shift_y
         roi = canvas[img1_y:img1_y + h1, img1_x:img1_x + w1]
 
-        img1_mask = (img1 > 0).astype(np.uint8)
-        warped_roi_mask = (roi > 0).astype(np.uint8)
-        overlap_mask = cv2.bitwise_and(img1_mask, warped_roi_mask)
+        # Per-pixel boolean masks (a pixel is content if any channel is non-zero)
+        img1_mask = np.any(img1 > 0, axis=2) if img1.ndim == 3 else img1 > 0
+        warped_roi_mask = np.any(roi > 0, axis=2) if roi.ndim == 3 else roi > 0
+        overlap_mask = img1_mask & warped_roi_mask
 
-        non_overlap = cv2.bitwise_and(img1, cv2.bitwise_not(overlap_mask) * 255)
-        overlap_blend = cv2.addWeighted(img1, 0.5, roi, 0.5, 0)
-        overlap_blend = cv2.bitwise_and(overlap_blend, overlap_mask * 255)
-
-        canvas_bg_non_overlap = cv2.bitwise_and(roi, cv2.bitwise_not(img1_mask) * 255)
-        blended_roi = cv2.add(cv2.add(non_overlap, overlap_blend), canvas_bg_non_overlap)
+        blended_roi = roi.copy()
+        img1_only = img1_mask & ~warped_roi_mask
+        blended_roi[img1_only] = img1[img1_only]
+        blended_roi[overlap_mask] = cv2.addWeighted(img1, 0.5, roi, 0.5, 0)[overlap_mask]
         canvas[img1_y:img1_y + h1, img1_x:img1_x + w1] = blended_roi
 
         cropped, crop_x, crop_y = crop_black_borders_with_offset(canvas)
