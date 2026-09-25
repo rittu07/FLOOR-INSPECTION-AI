@@ -26,7 +26,35 @@ backend/ml/crack_detection/
     └── evaluate.py               # Test-set metrics calculation
 ```
 
-## Quick Start Guide
+## Real-Data Segmentation Pipeline (recommended)
+
+The production model is a YOLO26s **segmentation** model trained on real crack photos plus a
+floor-domain supplement. Crack masks fit thin, diagonal cracks far better than boxes.
+
+```bash
+# 1. Download Ultralytics crack-seg (4,029 real crack photos with polygon masks, ~96 MB)
+#    and build datasets/floor_aug:
+#      tile_crack  - real crack shading transferred onto rendered tiled floors
+#      tile_neg    - tiled floors with grout/stains/scuffs, no cracks (hard negatives)
+#      texture_neg - crack-free crops of real photos
+python scripts/build_floor_dataset.py
+
+# 2. Train (GPU strongly recommended; ~3.5 min/epoch on an RTX 3060 Laptop at batch 8)
+python training/train.py                 # defaults: yolo26s-seg.pt, 80 epochs, patience 20
+python training/train.py --resume        # continue an interrupted run
+
+# 3. Evaluate: overall, real-crack and floor subsets, plus hard-negative false-positive rate
+python evaluation/evaluate.py
+```
+
+Config: `data_floor_seg.yaml`. The backend only runs the OpenCV heuristic detector when the trained
+model is missing, or when `CRACK_CV_FALLBACK=true` is set.
+
+**Best next step:** label 300+ real frames from your own floors/camera (CVAT or Label Studio,
+polygon masks, class `crack`, and include crack-free frames), add them as another `train`/`val`
+entry in `data_floor_seg.yaml`, and fine-tune from `models/best.pt`.
+
+## Legacy Synthetic Pipeline
 
 ### 1. Prepare Dataset
 Generates standardized concrete surface crack dataset samples with normalized YOLO label files (`0 x_center y_center width height`):

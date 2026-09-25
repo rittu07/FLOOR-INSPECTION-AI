@@ -1,8 +1,8 @@
-# YOLO Dataset Configuration for Concrete Surface Crack Detection
-path: d:/Extensions/ai/backend/ml/crack_detection/datasets/crack_dataset
-train: images/train
-val: images/val
-test: images/test
+# Legacy synthetic dataset config (see data_floor_seg.yaml for the real-data training set)
+# `path` is omitted so paths resolve relative to this file's directory.
+train: datasets/crack_dataset/images/train
+val: datasets/crack_dataset/images/val
+test: datasets/crack_dataset/images/test
 
 names:
   0: crack

@@ -26,6 +26,7 @@ class CrackService:
     def __init__(self):
         self._model = None
         self._device = "cpu"
+        self._custom_model_loaded = False
 
     def _load_model(self):
         if self._model is not None:
@@ -44,6 +45,7 @@ class CrackService:
             if model_path.exists():
                 logger.info(f"Loading custom YOLO crack model from {model_path} on device: {self._device}")
                 self._model = YOLO(str(model_path))
+                self._custom_model_loaded = True
             else:
                 logger.warning(f"Custom model path {model_path} not found. Loading base YOLO model...")
                 self._model = YOLO("yolov8n.pt")
@@ -374,8 +376,11 @@ class CrackService:
             except Exception as exc:
                 logger.error(f"YOLO Inference error: {exc}", exc_info=True)
 
-        # Step 2: Fallback to Advanced CV Crack & Defect Detector if no YOLO crack detections found
-        if len(detections) == 0:
+        # Step 2: Fallback to Advanced CV Crack & Defect Detector if no YOLO crack detections found.
+        # A trained crack model's empty result is a real "no crack" answer, so only fall back to the
+        # heuristic when that model is unavailable, unless CRACK_CV_FALLBACK forces it.
+        use_cv_fallback = settings.CRACK_CV_FALLBACK or not self._custom_model_loaded
+        if len(detections) == 0 and use_cv_fallback:
             logger.info(f"Running Advanced CV Crack Detector (sensitivity={sensitivity}, min_area={min_area})...")
             detections, annotated_img = self.detect_cracks_cv(
                 img, conf_thresh=conf_thresh, sensitivity=sensitivity, min_area_override=min_area

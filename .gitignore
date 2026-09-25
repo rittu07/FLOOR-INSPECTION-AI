@@ -63,3 +63,8 @@ runs/
 *.cache
 
 
+
+# Crack datasets (rebuild with backend/ml/crack_detection/scripts/build_floor_dataset.py)
+backend/ml/crack_detection/datasets/crack-seg/
+backend/ml/crack_detection/datasets/floor_aug/
+backend/ml/crack_detection/train_*.log

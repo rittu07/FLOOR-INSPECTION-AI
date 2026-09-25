@@ -1,0 +1,15 @@
+# YOLO segmentation dataset: real cracks + floor-domain supplement
+# Build with: python scripts/build_floor_dataset.py
+# `path` is omitted so paths resolve relative to this file's directory.
+train:
+  - datasets/crack-seg/images/train # 3717 real crack photos (Ultralytics crack-seg / Roboflow)
+  - datasets/floor_aug/images/train # tiled floors with transferred cracks + hard negatives
+val:
+  - datasets/crack-seg/images/val
+  - datasets/floor_aug/images/val
+test:
+  - datasets/crack-seg/images/test
+  - datasets/floor_aug/images/test
+
+names:
+  0: crack
