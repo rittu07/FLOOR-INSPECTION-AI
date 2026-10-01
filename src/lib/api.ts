@@ -504,7 +504,7 @@ export async function processMosaicLocalizationApi(mosaicId: string, confThresho
 export async function checkBackendHealth() {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // free-tier hosts can be slow to respond
     const res = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) return false;
