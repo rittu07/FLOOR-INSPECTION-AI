@@ -96,6 +96,26 @@ detected, CPU build otherwise), installs backend requirements and creates `backe
 
 ---
 
+## Deployment (free tier)
+
+| Part | Host | Config |
+|---|---|---|
+| Frontend (Next.js) | Vercel — https://floor-inspection-ai.vercel.app | `vercel.json`, `.vercelignore`, `.env.production` (`NEXT_PUBLIC_API_URL`) |
+| Backend (FastAPI) | Render free web service (512 MB) | `render.yaml`, `backend/requirements-deploy.txt` |
+
+The hosted backend runs the crack model with **ONNX Runtime** (`backend/ml/crack_detection/models/best.onnx`) instead
+of PyTorch, so it fits in ~300 MB RAM (`CRACK_INFERENCE_BACKEND=onnx`). Local development keeps using PyTorch/CUDA.
+Free-tier limits: the service sleeps after 15 min idle (first request then takes ~1 min) and stored frames/mosaics are
+cleared on restart.
+
+After retraining, update **both** model files and push:
+```bash
+backend.venvScriptspython -c "from ultralytics.utils.torch_utils import strip_optimizer; strip_optimizer('backend/ml/crack_detection/runs/crack_seg_v2/weights/best.pt', s='backend/ml/crack_detection/models/best.pt')"
+backend.venvScriptspython -c "from ultralytics import YOLO; YOLO('backend/ml/crack_detection/models/best.pt').export(format='onnx', imgsz=640, simplify=True)"
+```
+
+---
+
 ## Running the Application
 
 ### 1. Start FastAPI Backend

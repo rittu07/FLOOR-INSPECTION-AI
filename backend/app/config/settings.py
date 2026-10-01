@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Crack Detection parameters
     CRACK_MODEL_PATH: Path = BASE_DIR / "ml" / "crack_detection" / "models" / "best.pt"
     CRACK_CONFIDENCE_THRESHOLD: float = 0.25
+    # "auto" uses PyTorch/Ultralytics when installed, otherwise the ONNX model next to CRACK_MODEL_PATH;
+    # "onnx" forces the lightweight ONNX Runtime path (small CPU hosts), "torch" forces Ultralytics
+    CRACK_INFERENCE_BACKEND: str = "auto"
     # Run the OpenCV heuristic detector even when the trained crack model returns no detections
     CRACK_CV_FALLBACK: bool = False
     # Ground sampling distance of the stitched mosaic; 0 = uncalibrated (sizes reported in pixels only)

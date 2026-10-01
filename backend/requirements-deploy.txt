@@ -1,0 +1,11 @@
+# Lightweight runtime for small CPU hosts (e.g. Render free, 512 MB RAM).
+# Runs the crack model with ONNX Runtime (ml/crack_detection/models/best.onnx); no PyTorch/Ultralytics.
+fastapi>=0.110.0
+uvicorn>=0.28.0
+opencv-python-headless>=4.9.0.80
+numpy>=1.26.4
+python-multipart>=0.0.9
+pydantic>=2.6.4
+pydantic-settings>=2.2.1
+python-dotenv>=1.0.1
+onnxruntime>=1.18.0

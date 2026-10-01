@@ -1,0 +1,21 @@
+# Render Blueprint: free web service for the FastAPI backend (ONNX Runtime, fits 512 MB RAM).
+# Dashboard: New + > Blueprint > select this repository.
+services:
+  - type: web
+    name: floor-inspection-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: CRACK_INFERENCE_BACKEND
+        value: onnx
+      - key: FRONTEND_URL
+        value: https://floor-inspection-ai.vercel.app
+      - key: CRACK_CONFIDENCE_THRESHOLD
+        value: "0.25"

@@ -34,14 +34,32 @@ class CrackService:
             return self._model
 
         model_path = settings.CRACK_MODEL_PATH
+        onnx_path = model_path if model_path.suffix == ".onnx" else model_path.with_suffix(".onnx")
+        backend = settings.CRACK_INFERENCE_BACKEND.lower()
+
+        if backend == "auto":
+            try:
+                import ultralytics  # noqa: F401
+                backend = "onnx" if model_path.suffix == ".onnx" else "torch"
+            except ImportError:
+                backend = "onnx"
+
         try:
+            if backend == "onnx":
+                if not onnx_path.exists():
+                    logger.error(f"ONNX crack model not found at {onnx_path}")
+                    return None
+                from app.services.onnx_segmenter import OnnxSegmenter
+
+                logger.info(f"Loading ONNX crack model from {onnx_path} (ONNX Runtime, CPU)")
+                self._model = OnnxSegmenter(str(onnx_path))
+                self._custom_model_loaded = True
+                return self._model
+
             import torch
             from ultralytics import YOLO
 
-            if torch.cuda.is_available():
-                self._device = "cuda"
-            else:
-                self._device = "cpu"
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
             if model_path.exists():
                 logger.info(f"Loading custom YOLO crack model from {model_path} on device: {self._device}")
@@ -50,11 +68,43 @@ class CrackService:
             else:
                 logger.warning(f"Custom model path {model_path} not found. Loading base YOLO model...")
                 self._model = YOLO("yolov8n.pt")
-                
+
             return self._model
         except Exception as e:
             logger.error(f"Failed to load YOLO model: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def _run_model(model, img: np.ndarray, conf_thresh: float):
+        """
+        Runs either backend and returns ([(cls_id, confidence, (x1, y1, x2, y2), outline_or_None, label)], plotter)
+        where plotter() renders the annotated image.
+        """
+        from app.services.onnx_segmenter import OnnxSegmenter
+
+        if isinstance(model, OnnxSegmenter):
+            dets = model.predict(img, conf=conf_thresh)
+            items = [
+                (d.cls_id, d.confidence, d.xyxy, d.polygon if len(d.polygon) else None, model.names.get(d.cls_id, "Crack"))
+                for d in dets
+            ]
+            return items, lambda: model.plot(img, dets)
+
+        results = model.predict(source=img, conf=conf_thresh, verbose=False)
+        if not results:
+            return [], lambda: img.copy()
+        r = results[0]
+        if r.boxes is None or len(r.boxes) == 0:
+            return [], r.plot
+        mask_polys = r.masks.xy if getattr(r, "masks", None) is not None else None
+        names = model.names if hasattr(model, "names") else {}
+        items = []
+        for idx, box in enumerate(r.boxes):
+            cls_id = int(box.cls[0].item()) if box.cls is not None else 0
+            confidence = float(box.conf[0].item()) if box.conf is not None else 0.0
+            outline = mask_polys[idx] if mask_polys is not None and idx < len(mask_polys) else None
+            items.append((cls_id, confidence, tuple(box.xyxy[0].tolist()), outline, names.get(cls_id, "Crack")))
+        return items, r.plot
 
     @staticmethod
     def measure_crack_geometry(outline: np.ndarray) -> Tuple[List[Point2DSchema], Optional[float], Optional[float]]:
@@ -370,53 +420,41 @@ class CrackService:
         # Step 1: Attempt YOLO Model Detection
         if model is not None:
             try:
-                results = model.predict(source=img, conf=conf_thresh, verbose=False)
-                
-                if results and len(results) > 0:
-                    r = results[0]
-                    boxes = r.boxes
-                    
-                    if boxes is not None and len(boxes) > 0:
-                        mask_polys = r.masks.xy if getattr(r, "masks", None) is not None else None
-                        for box_idx, box in enumerate(boxes):
-                            cls_id = int(box.cls[0].item()) if box.cls is not None else 0
-                            confidence = float(box.conf[0].item()) if box.conf is not None else 0.0
-                            
-                            xyxy = box.xyxy[0].tolist()
-                            xmin, ymin, xmax, ymax = xyxy[0], xyxy[1], xyxy[2], xyxy[3]
-                            w_px = max(1.0, xmax - xmin)
-                            h_px = max(1.0, ymax - ymin)
+                items, plotter = self._run_model(model, img, conf_thresh)
 
-                            label_name = model.names.get(cls_id, "Crack") if hasattr(model, "names") else "Crack"
-                            
-                            # Filter out non-crack COCO objects if base model was loaded
-                            if label_name.lower() not in ["crack", "fracture", "defect", "damage"]:
-                                continue
+                for cls_id, confidence, xyxy, mask_outline, label_name in items:
+                    xmin, ymin, xmax, ymax = xyxy
+                    w_px = max(1.0, xmax - xmin)
+                    h_px = max(1.0, ymax - ymin)
 
-                            outline, length_px, max_width_px = [], None, None
-                            if mask_polys is not None and box_idx < len(mask_polys):
-                                outline, length_px, max_width_px = self.measure_crack_geometry(mask_polys[box_idx])
+                    # Filter out non-crack COCO objects if base model was loaded
+                    if label_name.lower() not in ["crack", "fracture", "defect", "damage"]:
+                        continue
 
-                            detections.append(
-                                CrackDetectionItemSchema(
-                                    id=f"crack-{uuid.uuid4().hex[:8]}",
-                                    class_id=cls_id,
-                                    label=label_name.capitalize(),
-                                    confidence=round(confidence, 4),
-                                    box=BoundingBoxSchema(
-                                        x=round(xmin, 2),
-                                        y=round(ymin, 2),
-                                        width=round(w_px, 2),
-                                        height=round(h_px, 2),
-                                    ),
-                                    outline=outline,
-                                    length_px=length_px,
-                                    max_width_px=max_width_px,
-                                )
-                            )
+                    outline, length_px, max_width_px = [], None, None
+                    if mask_outline is not None:
+                        outline, length_px, max_width_px = self.measure_crack_geometry(mask_outline)
 
-                        if len(detections) > 0:
-                            annotated_img = r.plot()
+                    detections.append(
+                        CrackDetectionItemSchema(
+                            id=f"crack-{uuid.uuid4().hex[:8]}",
+                            class_id=cls_id,
+                            label=label_name.capitalize(),
+                            confidence=round(confidence, 4),
+                            box=BoundingBoxSchema(
+                                x=round(xmin, 2),
+                                y=round(ymin, 2),
+                                width=round(w_px, 2),
+                                height=round(h_px, 2),
+                            ),
+                            outline=outline,
+                            length_px=length_px,
+                            max_width_px=max_width_px,
+                        )
+                    )
+
+                if len(detections) > 0:
+                    annotated_img = plotter()
             except Exception as exc:
                 logger.error(f"YOLO Inference error: {exc}", exc_info=True)
 
