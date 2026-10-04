@@ -9,7 +9,7 @@ import {
   SystemSettings,
   InspectionSession,
 } from '@/types';
-import { checkBackendHealth } from '@/lib/api';
+import { checkBackendHealth, DEFAULT_API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '@/lib/api';
 
 interface InspectionContextType {
   capturedFrames: CapturedFrame[];
@@ -47,7 +47,7 @@ const defaultSettings: SystemSettings = {
   matchingAlgorithm: 'BFMatcher',
   blendingEnabled: true,
   aiModel: 'YOLOv8-Crack-v2',
-  backendUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  backendUrl: DEFAULT_API_BASE_URL,
   apiStatus: 'offline',
 };
 
@@ -85,6 +85,7 @@ export function InspectionProvider({ children }: { children: React.ReactNode }) 
     const isHealthy = await checkBackendHealth();
     setSettings((prev) => ({
       ...prev,
+      backendUrl: getApiBaseUrl(),
       apiStatus: isHealthy ? 'online' : 'offline',
     }));
   };
@@ -183,6 +184,8 @@ export function InspectionProvider({ children }: { children: React.ReactNode }) 
   };
 
   const updateSettings = (newSettings: Partial<SystemSettings>) => {
+    // Persist a backend URL override so the API client (and future visits) use it
+    if (newSettings.backendUrl !== undefined) setApiBaseUrl(newSettings.backendUrl);
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 

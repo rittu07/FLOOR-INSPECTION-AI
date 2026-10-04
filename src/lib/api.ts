@@ -1,6 +1,46 @@
 import { CapturedFrame, MosaicResult, MosaicMetadata, CrackDetectionResult, LocalizedCrack, LocalizationResult } from '@/types';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+/** Build-time default backend (NEXT_PUBLIC_API_URL), e.g. an ngrok or Render URL for the hosted app. */
+export const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const API_URL_STORAGE_KEY = 'backendUrl';
+
+/**
+ * Backend URL in use: a URL saved on the Settings page (this browser only) overrides the build-time
+ * default, so a new ngrok/tunnel URL can be used without redeploying the frontend.
+ */
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem(API_URL_STORAGE_KEY);
+      if (saved && /^https?:\/\/[^/\s]+/.test(saved)) return saved.trim().replace(/\/+$/, '');
+    } catch {
+      // storage unavailable (private mode): fall back to the default
+    }
+  }
+  return DEFAULT_API_BASE_URL;
+}
+
+/** Saves a backend URL override for this browser; pass null (or the default) to clear it. */
+export function setApiBaseUrl(url: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = url?.trim().replace(/\/+$/, '');
+    if (!clean || clean === DEFAULT_API_BASE_URL) window.localStorage.removeItem(API_URL_STORAGE_KEY);
+    else window.localStorage.setItem(API_URL_STORAGE_KEY, clean);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/** Free ngrok tunnels show an HTML warning page to browsers unless this header is sent. */
+function backendHeaders(url: string): Record<string, string> {
+  return /\.ngrok(-free)?\.(app|dev|io)/.test(url) ? { 'ngrok-skip-browser-warning': 'true' } : {};
+}
+
+/** Absolute URL for a backend path such as /outputs/x.jpg. */
+export function backendUrl(path: string): string {
+  return path.startsWith('http') || path.startsWith('data:') ? path : `${getApiBaseUrl()}${path}`;
+}
 
 export interface ApiErrorResponse {
   status: string;
@@ -160,8 +200,8 @@ async function imageInputToBlob(imageInput: string | Blob): Promise<Blob> {
       const res = await fetch(imageInput);
       return await res.blob();
     }
-    const fullUrl = imageInput.startsWith('http') ? imageInput : `${API_BASE_URL}${imageInput}`;
-    const res = await fetch(fullUrl);
+    const fullUrl = imageInput.startsWith('http') ? imageInput : `${getApiBaseUrl()}${imageInput}`;
+    const res = await fetch(fullUrl, { headers: backendHeaders(fullUrl) });
     return await res.blob();
   }
   throw new Error('Unsupported image input type');
@@ -172,17 +212,17 @@ async function imageInputToBlob(imageInput: string | Blob): Promise<Blob> {
  * that only runs on this computer's localhost.
  */
 function describeConnectionError(message: string): string {
-  const apiIsLocal = /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE_URL);
+  const apiIsLocal = /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(getApiBaseUrl());
   const pageIsLocal =
     typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
   if (apiIsLocal && !pageIsLocal) {
     return (
-      `Cannot reach the inspection backend at ${API_BASE_URL}. This hosted app runs the AI model on a ` +
+      `Cannot reach the inspection backend at ${getApiBaseUrl()}. This hosted app runs the AI model on a ` +
       'separate backend: start it on this computer (and allow local network access if the browser asks), ' +
       'or set NEXT_PUBLIC_API_URL to a publicly hosted backend.'
     );
   }
-  return `${message} (backend: ${API_BASE_URL})`;
+  return `${message} (backend: ${getApiBaseUrl()})`;
 }
 
 /**
@@ -194,7 +234,9 @@ async function fetchApi<T>(
 ): Promise<{ data: T | null; error: string | null; errorDetails?: ApiErrorResponse | null }> {
   try {
     const isFormData = options?.body instanceof FormData;
+    const baseUrl = getApiBaseUrl();
     const headers: Record<string, string> = {
+      ...backendHeaders(baseUrl),
       ...(options?.headers as Record<string, string>),
     };
 
@@ -202,7 +244,7 @@ async function fetchApi<T>(
       headers['Content-Type'] = 'application/json';
     }
 
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const res = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
     });
@@ -244,7 +286,7 @@ export async function captureFrameApi(imageBlob: Blob, filename = 'capture.jpg')
   });
 
   if (data) {
-    const fullUrl = data.url.startsWith('http') ? data.url : `${API_BASE_URL}${data.url}`;
+    const fullUrl = data.url.startsWith('http') ? data.url : `${getApiBaseUrl()}${data.url}`;
     return {
       data: {
         ...data,
@@ -267,7 +309,7 @@ export async function createMosaicApi(frameIds: string[]) {
   });
 
   if (data) {
-    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${API_BASE_URL}${data.image_url}`;
+    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${getApiBaseUrl()}${data.image_url}`;
 
     const mosaicMetadata: MosaicMetadata = {
       id: data.id,
@@ -323,7 +365,7 @@ export async function getMosaicMetadataApi(mosaicId: string) {
   });
 
   if (data) {
-    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${API_BASE_URL}${data.image_url}`;
+    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${getApiBaseUrl()}${data.image_url}`;
 
     const mosaicMetadata: MosaicMetadata = {
       id: data.id,
@@ -400,10 +442,10 @@ export async function detectCracksApi(
     if (data) {
       const fullAnnotatedUrl = data.annotated_image_url.startsWith('http')
         ? data.annotated_image_url
-        : `${API_BASE_URL}${data.annotated_image_url}`;
+        : `${getApiBaseUrl()}${data.annotated_image_url}`;
 
       const fullSourceUrl = typeof imageInput === 'string'
-        ? (imageInput.startsWith('http') ? imageInput : (imageInput.startsWith('data:') ? imageInput : `${API_BASE_URL}${imageInput}`))
+        ? (imageInput.startsWith('http') ? imageInput : (imageInput.startsWith('data:') ? imageInput : `${getApiBaseUrl()}${imageInput}`))
         : fullAnnotatedUrl;
 
       const mappedResult: CrackDetectionResult = {
@@ -448,7 +490,7 @@ export async function localizeDetectionsApi(
   if (data) {
     const fullImageUrl = data.mosaic_image_url.startsWith('http')
       ? data.mosaic_image_url
-      : `${API_BASE_URL}${data.mosaic_image_url}`;
+      : `${getApiBaseUrl()}${data.mosaic_image_url}`;
 
     const result: LocalizationResult = {
       status: 'completed',
@@ -480,7 +522,7 @@ export async function processMosaicLocalizationApi(mosaicId: string, confThresho
   if (data) {
     const fullImageUrl = data.mosaic_image_url.startsWith('http')
       ? data.mosaic_image_url
-      : `${API_BASE_URL}${data.mosaic_image_url}`;
+      : `${getApiBaseUrl()}${data.mosaic_image_url}`;
 
     const result: LocalizationResult = {
       status: 'completed',
@@ -505,7 +547,8 @@ export async function checkBackendHealth() {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // free-tier hosts can be slow to respond
-    const res = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/health`, { signal: controller.signal, headers: backendHeaders(base) });
     clearTimeout(timeoutId);
     if (!res.ok) return false;
     const json = await res.json();

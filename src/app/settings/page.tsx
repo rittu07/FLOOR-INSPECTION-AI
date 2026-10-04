@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useInspection } from '@/context/InspectionContext';
+import { DEFAULT_API_BASE_URL } from '@/lib/api';
 import { Settings as SettingsIcon, Camera, Grid, Cpu, Server, RefreshCw } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -211,11 +212,25 @@ export default function SettingsPage() {
                 value={settings.backendUrl}
                 onChange={(e) => updateSettings({ backendUrl: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-slate-700"
-                placeholder="http://localhost:8000"
+                placeholder="https://your-name.ngrok-free.app"
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Configured via NEXT_PUBLIC_API_URL environment variable.
-              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-[11px] text-slate-500">
+                  Saved in this browser. Paste your ngrok URL here; default: {DEFAULT_API_BASE_URL}
+                </p>
+                {settings.backendUrl !== DEFAULT_API_BASE_URL && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateSettings({ backendUrl: DEFAULT_API_BASE_URL });
+                      setTimeout(checkApiConnection, 0);
+                    }}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 shrink-0"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg flex items-center justify-between">
