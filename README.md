@@ -116,6 +116,23 @@ backend.venvScriptspython -c "from ultralytics import YOLO; YOLO('backend/ml/cra
 
 ---
 
+## One-Click Public Launcher (ngrok)
+
+Double-click **`Launch Floor Inspection AI.bat`** (or run `powershell -ExecutionPolicy Bypass -File start-public.ps1`). It:
+
+1. starts the backend on this PC (GPU/PyTorch) on port 8000,
+2. opens an ngrok HTTPS tunnel to it (first run asks for your ngrok authtoken from
+   https://dashboard.ngrok.com/get-started/your-authtoken and stores it in ngrok's local config),
+3. opens https://floor-inspection-ai.vercel.app/?backend=<ngrok-url> — the app saves that backend for the browser,
+4. copies that link to the clipboard so any other device/person can open it already connected,
+5. stops the backend and tunnel when you press Enter.
+
+Options: `-Domain your-name.ngrok-free.app` (or `$env:NGROK_DOMAIN`) pins your free ngrok domain; `-InstallShortcut`
+adds a "Floor Inspection AI" desktop shortcut. The backend URL can also be changed any time in **Settings > Backend API
+Host URL** (with "Reset to default").
+
+---
+
 ## Running the Application
 
 ### 1. Start FastAPI Backend

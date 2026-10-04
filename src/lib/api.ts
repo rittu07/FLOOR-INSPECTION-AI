@@ -37,6 +37,27 @@ function backendHeaders(url: string): Record<string, string> {
   return /\.ngrok(-free)?\.(app|dev|io)/.test(url) ? { 'ngrok-skip-browser-warning': 'true' } : {};
 }
 
+/**
+ * Applies a backend passed in the page link (`?backend=https://xxxx.ngrok-free.app`, as opened/shared by the
+ * launcher), saves it for this browser and removes it from the address bar. Only https URLs (or a
+ * localhost backend) are accepted.
+ */
+export function applyBackendFromLink(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    const backend = url.searchParams.get('backend')?.trim().replace(/\/+$/, '');
+    if (backend === undefined) return;
+    const isValid =
+      /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(backend) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(backend);
+    if (isValid) setApiBaseUrl(backend);
+    url.searchParams.delete('backend');
+    window.history.replaceState(window.history.state, '', url.toString());
+  } catch {
+    // malformed link: keep the current backend
+  }
+}
+
 /** Absolute URL for a backend path such as /outputs/x.jpg. */
 export function backendUrl(path: string): string {
   return path.startsWith('http') || path.startsWith('data:') ? path : `${getApiBaseUrl()}${path}`;

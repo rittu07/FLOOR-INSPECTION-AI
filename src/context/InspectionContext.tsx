@@ -9,7 +9,7 @@ import {
   SystemSettings,
   InspectionSession,
 } from '@/types';
-import { checkBackendHealth, DEFAULT_API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '@/lib/api';
+import { applyBackendFromLink, checkBackendHealth, DEFAULT_API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '@/lib/api';
 
 interface InspectionContextType {
   capturedFrames: CapturedFrame[];
@@ -91,6 +91,7 @@ export function InspectionProvider({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
+    applyBackendFromLink(); // launcher/share links: ?backend=<ngrok url>
     checkApiConnection();
     const interval = setInterval(checkApiConnection, 15000);
     return () => clearInterval(interval);
