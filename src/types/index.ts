@@ -60,6 +60,10 @@ export interface CrackDetectionItem {
   label: 'Hairline Crack' | 'Structural Crack' | 'Surface Spalling' | 'Joint Separation';
   confidence: number;
   box: BoundingBox;
+  /** Crack mask outline in image pixels (segmentation model) */
+  outline?: Point2D[];
+  lengthPx?: number | null;
+  maxWidthPx?: number | null;
 }
 
 export interface CrackDetectionResult {

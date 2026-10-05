@@ -9,6 +9,12 @@ export const SEVERITY_STYLE: Record<CrackSeverity, { label: string; color: strin
   unknown: { label: 'Unmeasured', color: '#22d3ee', badge: 'bg-cyan-950/80 text-cyan-300 border-cyan-800' },
 };
 
+/** Same px bands as the backend (crack_localization_service.SEVERITY_WIDTH_PX) for uncalibrated images. */
+export function severityFromWidthPx(maxWidthPx: number | null | undefined): CrackSeverity {
+  if (maxWidthPx == null) return 'unknown';
+  return maxWidthPx < 4 ? 'low' : maxWidthPx <= 10 ? 'medium' : 'high';
+}
+
 export const DUPLICATE_COLOR = '#a855f7';
 export const SELECTED_COLOR = '#3b82f6';
 export const OUT_OF_BOUNDS_COLOR = '#6b7280';

@@ -181,6 +181,9 @@ export interface BackendCrackItem {
     width: number;
     height: number;
   };
+  outline?: Array<{ x: number; y: number }>;
+  length_px?: number | null;
+  max_width_px?: number | null;
 }
 
 export interface BackendCrackResponse {
@@ -553,6 +556,9 @@ export async function detectCracksApi(
           label: (d.label as any) || 'Crack',
           confidence: d.confidence,
           box: d.box,
+          outline: d.outline ?? [],
+          lengthPx: d.length_px ?? null,
+          maxWidthPx: d.max_width_px ?? null,
         })),
       };
 
