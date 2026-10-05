@@ -93,7 +93,7 @@ $publicUrl = Get-TunnelUrl
 if ($publicUrl) {
     Write-Host 'ngrok tunnel already running - reusing it.'
 } else {
-    $ngrokArgs = @('http', '8000')
+    $ngrokArgs = @('http', '127.0.0.1:8000')  # IPv4: uvicorn listens on 127.0.0.1, 'localhost' may resolve to ::1
     if ($Domain) { $ngrokArgs += "--url=https://$($Domain -replace '^https?://', '')" }
     $started += Start-Process $ngrok -PassThru -WindowStyle Minimized -ArgumentList $ngrokArgs
     for ($i = 0; $i -lt 30 -and -not $publicUrl; $i++) { Start-Sleep 1; $publicUrl = Get-TunnelUrl }

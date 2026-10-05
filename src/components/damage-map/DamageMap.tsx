@@ -12,6 +12,7 @@ import {
   crackShape,
 } from './severity';
 import { Download, FileJson, Layers, Maximize, Minus, Plus } from 'lucide-react';
+import { resolveImageUrl } from '@/lib/api';
 
 interface DamageMapProps {
   mosaicUrl: string;
@@ -296,7 +297,11 @@ export const DamageMap: React.FC<DamageMapProps> = ({
       canvas.toBlob((blob) => blob && downloadBlob(blob, `${exportName}.png`), 'image/png');
     };
     img.onerror = () => alert('Could not load the mosaic image for export.');
-    img.src = mosaicUrl;
+    resolveImageUrl(mosaicUrl)
+      .then((src) => {
+        img.src = src;
+      })
+      .catch(() => alert('Could not load the mosaic image for export.'));
   };
 
   const toolbarBtn =

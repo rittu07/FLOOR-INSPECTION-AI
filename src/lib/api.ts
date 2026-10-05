@@ -58,6 +58,33 @@ export function applyBackendFromLink(): void {
   }
 }
 
+const tunnelImageCache = new Map<string, Promise<string>>();
+
+/** True for URLs served through a free ngrok tunnel (plain <img> loads get ngrok's HTML warning page). */
+export function isTunnelUrl(url: string): boolean {
+  return 'ngrok-skip-browser-warning' in backendHeaders(url);
+}
+
+/**
+ * Returns a URL an <img>/canvas can load: for ngrok-tunnelled backend images the file is fetched with the
+ * skip-warning header and exposed as a blob: URL (cached); other URLs are returned unchanged.
+ */
+export function resolveImageUrl(url: string): Promise<string> {
+  if (!isTunnelUrl(url)) return Promise.resolve(url);
+  let pending = tunnelImageCache.get(url);
+  if (!pending) {
+    pending = fetch(url, { headers: backendHeaders(url) })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => URL.createObjectURL(blob));
+    tunnelImageCache.set(url, pending);
+    pending.catch(() => tunnelImageCache.delete(url));
+  }
+  return pending;
+}
+
 /** Absolute URL for a backend path such as /outputs/x.jpg. */
 export function backendUrl(path: string): string {
   return path.startsWith('http') || path.startsWith('data:') ? path : `${getApiBaseUrl()}${path}`;

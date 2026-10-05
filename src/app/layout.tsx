@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { InspectionProvider } from '@/context/InspectionContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { TunnelImageLoader } from '@/components/layout/TunnelImageLoader';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950`}>
         <InspectionProvider>
           <DashboardLayout>{children}</DashboardLayout>
+          <TunnelImageLoader />
         </InspectionProvider>
       </body>
     </html>
