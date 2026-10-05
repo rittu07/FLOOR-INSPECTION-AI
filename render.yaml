@@ -29,6 +29,8 @@ services:
         value: "1"
       - key: CRACK_MAX_TILES
         value: "6"
+      - key: MALLOC_ARENA_MAX
+        value: "2"
       - key: FRONTEND_URL
         value: https://floor-inspection-ai.vercel.app
       - key: CRACK_CONFIDENCE_THRESHOLD

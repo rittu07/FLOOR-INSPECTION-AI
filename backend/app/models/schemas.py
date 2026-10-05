@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: str = "ok"
     service: str = "floor-inspection-backend"
+    memory_mb: Optional[float] = None
 
 class FrameUploadResponse(BaseModel):
     id: str

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, status
-from starlette.concurrency import run_in_threadpool
+
+from app.utils.memory import run_heavy
 from app.services.crack_localization_service import CrackLocalizationService
 from app.models.schemas import (
     LocalizationMapRequest,
@@ -23,7 +24,7 @@ async def map_detections(payload: LocalizationMapRequest):
     """
     Maps a list of frame-level YOLO crack detections onto global floor mosaic coordinates using homography transformations.
     """
-    return await run_in_threadpool(CrackLocalizationService.localize_detections, payload.mosaic_id, payload.detections)
+    return await run_heavy(CrackLocalizationService.localize_detections, payload.mosaic_id, payload.detections)
 
 @router.post(
     "/process",
@@ -39,7 +40,7 @@ async def process_mosaic_localization(payload: LocalizationProcessRequest):
     Executes automated multi-frame localization pipeline: runs YOLO crack detection across all source frames of a mosaic,
     maps detections into global floor mosaic space, and flags spatial duplicate detections.
     """
-    return await run_in_threadpool(
+    return await run_heavy(
         CrackLocalizationService.process_mosaic_localization,
         mosaic_id=payload.mosaic_id,
         confidence_threshold=payload.confidence_threshold,

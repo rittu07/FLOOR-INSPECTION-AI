@@ -65,7 +65,9 @@ async def health_check():
     """
     Service liveness & readiness check endpoint.
     """
-    return HealthResponse(status="ok", service="floor-inspection-backend")
+    from app.utils.memory import current_rss_mb
+
+    return HealthResponse(status="ok", service="floor-inspection-backend", memory_mb=current_rss_mb())
 
 # Custom Error Handling middleware ensuring consistent JSON error responses
 @app.exception_handler(HTTPException)
