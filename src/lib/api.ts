@@ -241,18 +241,48 @@ function mapLocalizedCrack(c: BackendLocalizedCrack): LocalizedCrack {
  */
 async function imageInputToBlob(imageInput: string | Blob): Promise<Blob> {
   if (imageInput instanceof Blob) {
-    return imageInput;
+    return shrinkForUpload(imageInput);
   }
   if (typeof imageInput === 'string') {
     if (imageInput.startsWith('data:')) {
       const res = await fetch(imageInput);
-      return await res.blob();
+      return shrinkForUpload(await res.blob());
     }
     const fullUrl = imageInput.startsWith('http') ? imageInput : `${getApiBaseUrl()}${imageInput}`;
     const res = await fetch(fullUrl, { headers: backendHeaders(fullUrl) });
-    return await res.blob();
+    return shrinkForUpload(await res.blob());
   }
   throw new Error('Unsupported image input type');
+}
+
+// Serverless hosts cap request bodies (Vercel: 4.5 MB). The model runs at 640 px and mosaicking at
+// MAX_IMAGE_WIDTH (1600 px), so large photos are downscaled before upload without losing useful detail.
+const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
+const MAX_UPLOAD_DIMENSION = 2048;
+
+async function shrinkForUpload(blob: Blob): Promise<Blob> {
+  if (typeof window === 'undefined' || !blob.type.startsWith('image/')) return blob;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    return blob; // not decodable by the browser: let the backend validate it
+  }
+  const scale = Math.min(1, MAX_UPLOAD_DIMENSION / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1 && blob.size <= MAX_UPLOAD_BYTES) {
+    bitmap.close();
+    return blob;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  for (const quality of [0.92, 0.85, 0.75]) {
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (out && out.size <= MAX_UPLOAD_BYTES) return out;
+  }
+  return blob;
 }
 
 /**
@@ -326,7 +356,7 @@ async function fetchApi<T>(
  */
 export async function captureFrameApi(imageBlob: Blob, filename = 'capture.jpg') {
   const formData = new FormData();
-  formData.append('file', imageBlob, filename);
+  formData.append('file', await shrinkForUpload(imageBlob), filename);
 
   const { data, error, errorDetails } = await fetchApi<BackendFrameUploadResponse>('/api/camera/capture', {
     method: 'POST',

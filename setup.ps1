@@ -48,8 +48,8 @@ if (-not $hasNvidia) {
 }
 
 Step 'Installing backend requirements'
-& $venvPython -m pip install -r (Join-Path $backend 'requirements.txt')
-if ($LASTEXITCODE -ne 0) { throw 'pip install -r requirements.txt failed' }
+& $venvPython -m pip install -r (Join-Path $backend 'requirements-ml.txt')
+if ($LASTEXITCODE -ne 0) { throw 'pip install -r requirements-ml.txt failed' }
 
 Step 'Creating backend/.env'
 $envFile = Join-Path $backend '.env'

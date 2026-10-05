@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings
 
 # Absolute path to backend directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Writable data root: serverless hosts (Vercel sets VERCEL=1) only allow writes under /tmp
+DATA_DIR = Path("/tmp/floor-inspection") if os.environ.get("VERCEL") else BASE_DIR
 
 class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
@@ -16,9 +18,11 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # Paths using pathlib
-    CAPTURES_DIR: Path = BASE_DIR / "captures"
-    OUTPUTS_DIR: Path = BASE_DIR / "outputs"
-    DEBUG_DIR: Path = BASE_DIR / "debug"
+    CAPTURES_DIR: Path = DATA_DIR / "captures"
+    OUTPUTS_DIR: Path = DATA_DIR / "outputs"
+    DEBUG_DIR: Path = DATA_DIR / "debug"
+    # "auto" uploads files to Vercel Blob when BLOB_READ_WRITE_TOKEN is set; "local" keeps them on disk only
+    STORAGE_BACKEND: str = "auto"
 
     # Computer Vision parameters
     MAX_IMAGE_WIDTH: int = 1600
@@ -41,10 +45,16 @@ class Settings(BaseSettings):
     MOSAIC_MM_PER_PIXEL: float = 0.0
 
 
-    @field_validator("CAPTURES_DIR", "OUTPUTS_DIR", "DEBUG_DIR", "CRACK_MODEL_PATH")
+    @field_validator("CAPTURES_DIR", "OUTPUTS_DIR", "DEBUG_DIR")
+    @classmethod
+    def _resolve_data_dir(cls, value: Path) -> Path:
+        """Relative data dirs (e.g. from .env) resolve against the writable data root, not the process CWD."""
+        return value if value.is_absolute() else DATA_DIR / value
+
+    @field_validator("CRACK_MODEL_PATH")
     @classmethod
     def _resolve_relative_to_backend(cls, value: Path) -> Path:
-        """Relative paths (e.g. from .env) resolve against the backend directory, not the process CWD."""
+        """Relative model paths resolve against the backend directory, not the process CWD."""
         return value if value.is_absolute() else BASE_DIR / value
 
     model_config = ConfigDict(

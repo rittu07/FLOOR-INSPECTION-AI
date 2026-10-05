@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import UploadFile, HTTPException, status
 from app.config.settings import settings
 from app.utils.image_utils import validate_image_bytes, save_image
+from app.services import storage
 from app.models.schemas import FrameUploadResponse
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
@@ -60,7 +61,7 @@ class CameraService:
         target_path = settings.CAPTURES_DIR / filename
         save_image(img, target_path)
 
-        url_path = f"/captures/{filename}"
+        url_path = storage.publish("captures", target_path)
 
         return FrameUploadResponse(
             id=frame_id,

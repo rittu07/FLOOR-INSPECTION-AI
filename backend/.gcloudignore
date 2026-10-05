@@ -13,6 +13,6 @@ debug/
 ml/crack_detection/datasets/
 ml/crack_detection/runs/
 ml/crack_detection/models/*
-!ml/crack_detection/models/best.pt
+!ml/crack_detection/models/best.onnx
 *.log
 tests/

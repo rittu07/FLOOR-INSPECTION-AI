@@ -10,6 +10,7 @@ import numpy as np
 from fastapi import HTTPException, status
 
 from app.config.settings import settings
+from app.services import storage
 from app.utils.image_utils import (
     load_image,
     save_image,
@@ -463,11 +464,12 @@ class MosaicService:
 
         output_path = settings.OUTPUTS_DIR / filename
         save_image(cumulative_mosaic, output_path)
+        mosaic_url = storage.publish("outputs", output_path)
 
         metadata_response = MosaicMetadataResponse(
             id=mosaic_id,
             status="completed",
-            image_url=f"/outputs/{filename}",
+            image_url=mosaic_url,
             images_used=num_images,
             width=mosaic_w,
             height=mosaic_h,
@@ -482,6 +484,7 @@ class MosaicService:
         try:
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(metadata_response.model_dump(), f, indent=2)
+            storage.publish("outputs", json_path)
         except Exception as err:
             logger.warning(f"Failed to save mosaic metadata JSON sidecar: {err}")
 
@@ -504,8 +507,8 @@ class MosaicService:
         if clean_id in cls.MOSAIC_STORE:
             return MosaicMetadataResponse(**cls.MOSAIC_STORE[clean_id])
 
-        json_path = settings.OUTPUTS_DIR / f"{clean_id}.json"
-        if json_path.exists():
+        json_path = storage.ensure_local("outputs", f"{clean_id}.json")
+        if json_path is not None:
             try:
                 with open(json_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -550,12 +553,8 @@ class MosaicService:
 
         resolved_paths: List[Path] = []
         for img_id in image_ids:
-            clean_id = Path(img_id).name
-            file_path = settings.CAPTURES_DIR / clean_id
-            if not file_path.exists() and not clean_id.endswith(".jpg"):
-                file_path = settings.CAPTURES_DIR / f"{clean_id}.jpg"
-                
-            if not file_path.exists():
+            file_path = storage.resolve_frame(img_id)
+            if file_path is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail={

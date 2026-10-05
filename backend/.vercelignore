@@ -1,0 +1,17 @@
+# Backend Vercel project (Root Directory: backend). Keep the function bundle small.
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+captures/
+outputs/
+debug/
+tests/
+ml/crack_detection/datasets/
+ml/crack_detection/runs/
+ml/crack_detection/scripts/
+ml/crack_detection/training/
+ml/crack_detection/evaluation/
+ml/crack_detection/models/*.pt
+*.log
+Dockerfile

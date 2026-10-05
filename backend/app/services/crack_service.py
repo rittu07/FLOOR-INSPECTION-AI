@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 
 from app.config.settings import settings
+from app.services import storage
 from app.models.schemas import (
     CrackDetectionResponse,
     CrackDetectionItemSchema,
@@ -480,7 +481,7 @@ class CrackService:
         max_conf = round(float(np.max([d.confidence for d in detections])), 4) if crack_count > 0 else 0.0
         proc_time = round(time.time() - start_time, 4)
 
-        rel_url = f"/outputs/{out_filename}"
+        rel_url = storage.publish("outputs", out_path)
 
         return CrackDetectionResponse(
             id=res_id,

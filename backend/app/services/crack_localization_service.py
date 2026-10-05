@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from fastapi import HTTPException, status
 
 from app.config.settings import settings
+from app.services import storage
 from app.services.mosaic_service import MosaicService
 from app.services.crack_service import crack_service
 from app.models.schemas import (
@@ -227,11 +228,8 @@ class CrackLocalizationService:
 
         for frame_id in metadata.frames:
             clean_name = Path(frame_id).name
-            file_path = settings.CAPTURES_DIR / clean_name
-            if not file_path.exists() and not clean_name.endswith(".jpg"):
-                file_path = settings.CAPTURES_DIR / f"{clean_name}.jpg"
-
-            if not file_path.exists():
+            file_path = storage.resolve_frame(frame_id)
+            if file_path is None:
                 logger.warning(f"Frame image file '{frame_id}' not found on disk during localization processing.")
                 continue
 

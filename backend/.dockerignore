@@ -11,11 +11,11 @@ captures/
 outputs/
 debug/
 
-# Training data and artifacts (only models/best.pt is needed at runtime)
+# Training data and artifacts (only models/best.onnx is needed at runtime)
 ml/crack_detection/datasets/
 ml/crack_detection/runs/
 ml/crack_detection/models/*
-!ml/crack_detection/models/best.pt
+!ml/crack_detection/models/best.onnx
 *.log
 
 # Tests

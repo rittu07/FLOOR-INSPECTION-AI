@@ -20,12 +20,11 @@ ENV HOME=/home/user \
 
 WORKDIR /app
 
-# CPU-only PyTorch first (the default Linux wheel bundles ~3 GB of CUDA libraries)
+# Lightweight runtime: crack model runs with ONNX Runtime (no PyTorch)
 COPY requirements.txt .
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend codebase (see .dockerignore) including ml/crack_detection/models/best.pt
+# Copy backend codebase (see .dockerignore) including ml/crack_detection/models/best.onnx
 COPY --chown=user . .
 
 # Writable storage directories
