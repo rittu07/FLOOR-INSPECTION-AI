@@ -27,11 +27,18 @@ class SegDetection:
 
 
 class OnnxSegmenter:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, num_threads: int = 0):
         import onnxruntime as ort
 
+        # Containers report the host's CPU count, not their quota (Render free = 0.1 vCPU): one thread per
+        # host core thrashes the CPU and memory and gets the instance OOM-killed. Cap it explicitly.
+        threads = num_threads if num_threads > 0 else min(4, os.cpu_count() or 1)
+        cv2.setNumThreads(threads)
+
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = max(1, os.cpu_count() or 1)
+        opts.intra_op_num_threads = threads
+        opts.inter_op_num_threads = 1
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         # Free memory between requests instead of keeping a growing arena (512 MB hosts)
         opts.enable_cpu_mem_arena = False

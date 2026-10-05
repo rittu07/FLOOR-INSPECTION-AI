@@ -23,6 +23,10 @@ services:
         value: 3.11.9
       - key: CRACK_INFERENCE_BACKEND
         value: onnx
+      - key: INFERENCE_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"
       - key: FRONTEND_URL
         value: https://floor-inspection-ai.vercel.app
       - key: CRACK_CONFIDENCE_THRESHOLD

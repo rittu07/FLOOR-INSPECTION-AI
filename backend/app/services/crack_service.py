@@ -53,7 +53,7 @@ class CrackService:
                 from app.services.onnx_segmenter import OnnxSegmenter
 
                 logger.info(f"Loading ONNX crack model from {onnx_path} (ONNX Runtime, CPU)")
-                self._model = OnnxSegmenter(str(onnx_path))
+                self._model = OnnxSegmenter(str(onnx_path), num_threads=settings.INFERENCE_THREADS)
                 self._custom_model_loaded = True
                 return self._model
 
