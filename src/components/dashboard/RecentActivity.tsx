@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '@/components/ui/Card';
 import { ActivityEvent } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { useHydrated } from '@/lib/useHydrated';
 import { Camera, Grid, Scan, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface RecentActivityProps {
@@ -9,6 +10,7 @@ interface RecentActivityProps {
 }
 
 export const RecentActivity: React.FC<RecentActivityProps> = ({ events }) => {
+  const hydrated = useHydrated();
   const getEventIcon = (type: ActivityEvent['type']) => {
     switch (type) {
       case 'camera_started':
@@ -49,7 +51,7 @@ export const RecentActivity: React.FC<RecentActivityProps> = ({ events }) => {
                 )}
               </div>
               <span className="shrink-0 font-mono text-[10px] text-slate-400">
-                {formatDate(evt.timestamp)}
+                {hydrated ? formatDate(evt.timestamp) : ''}
               </span>
             </div>
           ))}

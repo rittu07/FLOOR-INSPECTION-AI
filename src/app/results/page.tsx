@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { useHydrated } from '@/lib/useHydrated';
 import { useInspection } from '@/context/InspectionContext';
 import { formatFullDate } from '@/lib/utils';
 import {
@@ -25,6 +26,7 @@ export default function ResultsPage() {
     crackResult,
     settings,
   } = useInspection();
+  const hydrated = useHydrated();
 
   const handleExportReport = () => {
     const reportData = {
@@ -79,12 +81,12 @@ export default function ResultsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
             <span className="text-[11px] font-mono text-slate-400 uppercase">Session ID</span>
-            <p className="text-sm font-bold font-mono text-slate-200 mt-1">{session.id}</p>
+            <p className="text-sm font-bold font-mono text-slate-200 mt-1">{hydrated ? session.id : 'SESS-------'}</p>
           </div>
 
           <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
             <span className="text-[11px] font-mono text-slate-400 uppercase">Date & Time</span>
-            <p className="text-xs font-mono text-slate-300 mt-1">{formatFullDate(session.startTime)}</p>
+            <p className="text-xs font-mono text-slate-300 mt-1">{hydrated ? formatFullDate(session.startTime) : ''}</p>
           </div>
 
           <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg">

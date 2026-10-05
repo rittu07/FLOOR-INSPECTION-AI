@@ -5,14 +5,27 @@ export const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://
 const API_URL_STORAGE_KEY = 'backendUrl';
 
 /**
- * Backend URL in use: a URL saved on the Settings page (this browser only) overrides the build-time
- * default, so a new ngrok/tunnel URL can be used without redeploying the frontend.
+ * Backend URL in use: a URL saved on the Settings page or via a ?backend= link (this browser only)
+ * overrides the build-time default, so a new ngrok/tunnel URL can be used without redeploying.
+ * An override is stored with the default it was made against and is dropped automatically once the
+ * deployed default changes, so browsers do not stay stuck on an old tunnel after a backend move.
  */
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     try {
-      const saved = window.localStorage.getItem(API_URL_STORAGE_KEY);
-      if (saved && /^https?:\/\/[^/\s]+/.test(saved)) return saved.trim().replace(/\/+$/, '');
+      const raw = window.localStorage.getItem(API_URL_STORAGE_KEY);
+      if (raw) {
+        let saved: { url?: string; defaultUrl?: string } | null = null;
+        try {
+          saved = JSON.parse(raw);
+        } catch {
+          saved = null; // legacy plain-string value: treat as stale
+        }
+        if (saved?.defaultUrl === DEFAULT_API_BASE_URL && saved.url && /^https?:\/\/[^/\s]+/.test(saved.url)) {
+          return saved.url;
+        }
+        window.localStorage.removeItem(API_URL_STORAGE_KEY);
+      }
     } catch {
       // storage unavailable (private mode): fall back to the default
     }
@@ -26,7 +39,7 @@ export function setApiBaseUrl(url: string | null): void {
   try {
     const clean = url?.trim().replace(/\/+$/, '');
     if (!clean || clean === DEFAULT_API_BASE_URL) window.localStorage.removeItem(API_URL_STORAGE_KEY);
-    else window.localStorage.setItem(API_URL_STORAGE_KEY, clean);
+    else window.localStorage.setItem(API_URL_STORAGE_KEY, JSON.stringify({ url: clean, defaultUrl: DEFAULT_API_BASE_URL }));
   } catch {
     // ignore storage failures
   }

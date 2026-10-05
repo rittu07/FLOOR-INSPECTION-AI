@@ -8,6 +8,7 @@ import { SystemStatus } from '@/components/dashboard/SystemStatus';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useInspection } from '@/context/InspectionContext';
+import { useHydrated } from '@/lib/useHydrated';
 import {
   Camera,
   Grid,
@@ -25,6 +26,7 @@ export default function DashboardPage() {
     session,
     activityEvents,
   } = useInspection();
+  const hydrated = useHydrated();
 
   return (
     <div className="space-y-6">
@@ -85,7 +87,7 @@ export default function DashboardPage() {
         <StatCard
           title="Current Session"
           value={session.status}
-          subtitle={`ID: ${session.id}`}
+          subtitle={`ID: ${hydrated ? session.id : 'SESS-------'}`}
           badgeText="Session Ready"
           badgeVariant="success"
           icon={<Activity className="w-5 h-5 text-purple-400" />}
