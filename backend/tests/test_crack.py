@@ -74,3 +74,13 @@ def test_crack_service_direct_call():
     assert result.status == "completed"
     assert result.image_url.startswith("/outputs/")
     assert result.processing_time_seconds > 0
+
+
+def test_tile_grid_covers_image_with_overlap():
+    from app.services.crack_service import CrackService
+
+    assert CrackService._tile_grid(500, 640, 0.25) == [0]
+    starts = CrackService._tile_grid(1500, 640, 0.25)
+    assert starts[0] == 0 and starts[-1] == 1500 - 640
+    # consecutive tiles overlap, so no pixel column is left uncovered
+    assert all(b - a < 640 for a, b in zip(starts, starts[1:]))

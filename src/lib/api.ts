@@ -100,7 +100,11 @@ export function resolveImageUrl(url: string): Promise<string> {
 
 /** Absolute URL for a backend path such as /outputs/x.jpg. */
 export function backendUrl(path: string): string {
-  return path.startsWith('http') || path.startsWith('data:') ? path : `${getApiBaseUrl()}${path}`;
+  if (/^(https?:|data:|blob:)/.test(path)) return path;
+  const base = getApiBaseUrl();
+  // With a same-origin base such as "/backend", URLs built earlier already carry the prefix: don't add it twice
+  if (base.startsWith('/') && (path === base || path.startsWith(`${base}/`))) return path;
+  return `${base}${path}`;
 }
 
 export interface ApiErrorResponse {
@@ -264,7 +268,7 @@ async function imageInputToBlob(imageInput: string | Blob): Promise<Blob> {
       const res = await fetch(imageInput);
       return shrinkForUpload(await res.blob());
     }
-    const fullUrl = imageInput.startsWith('http') ? imageInput : `${getApiBaseUrl()}${imageInput}`;
+    const fullUrl = backendUrl(imageInput);
     const res = await fetch(fullUrl, { headers: backendHeaders(fullUrl) });
     return shrinkForUpload(await res.blob());
   }
@@ -380,7 +384,7 @@ export async function captureFrameApi(imageBlob: Blob, filename = 'capture.jpg')
   });
 
   if (data) {
-    const fullUrl = data.url.startsWith('http') ? data.url : `${getApiBaseUrl()}${data.url}`;
+    const fullUrl = backendUrl(data.url);
     return {
       data: {
         ...data,
@@ -403,7 +407,7 @@ export async function createMosaicApi(frameIds: string[]) {
   });
 
   if (data) {
-    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${getApiBaseUrl()}${data.image_url}`;
+    const fullImageUrl = backendUrl(data.image_url);
 
     const mosaicMetadata: MosaicMetadata = {
       id: data.id,
@@ -459,7 +463,7 @@ export async function getMosaicMetadataApi(mosaicId: string) {
   });
 
   if (data) {
-    const fullImageUrl = data.image_url.startsWith('http') ? data.image_url : `${getApiBaseUrl()}${data.image_url}`;
+    const fullImageUrl = backendUrl(data.image_url);
 
     const mosaicMetadata: MosaicMetadata = {
       id: data.id,
@@ -534,12 +538,10 @@ export async function detectCracksApi(
     });
 
     if (data) {
-      const fullAnnotatedUrl = data.annotated_image_url.startsWith('http')
-        ? data.annotated_image_url
-        : `${getApiBaseUrl()}${data.annotated_image_url}`;
+      const fullAnnotatedUrl = backendUrl(data.annotated_image_url);
 
       const fullSourceUrl = typeof imageInput === 'string'
-        ? (imageInput.startsWith('http') ? imageInput : (imageInput.startsWith('data:') ? imageInput : `${getApiBaseUrl()}${imageInput}`))
+        ? backendUrl(imageInput)
         : fullAnnotatedUrl;
 
       const mappedResult: CrackDetectionResult = {
@@ -585,9 +587,7 @@ export async function localizeDetectionsApi(
   });
 
   if (data) {
-    const fullImageUrl = data.mosaic_image_url.startsWith('http')
-      ? data.mosaic_image_url
-      : `${getApiBaseUrl()}${data.mosaic_image_url}`;
+    const fullImageUrl = backendUrl(data.mosaic_image_url);
 
     const result: LocalizationResult = {
       status: 'completed',
@@ -617,9 +617,7 @@ export async function processMosaicLocalizationApi(mosaicId: string, confThresho
   });
 
   if (data) {
-    const fullImageUrl = data.mosaic_image_url.startsWith('http')
-      ? data.mosaic_image_url
-      : `${getApiBaseUrl()}${data.mosaic_image_url}`;
+    const fullImageUrl = backendUrl(data.mosaic_image_url);
 
     const result: LocalizationResult = {
       status: 'completed',

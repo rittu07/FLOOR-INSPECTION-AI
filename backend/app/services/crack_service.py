@@ -76,6 +76,97 @@ class CrackService:
             return None
 
     @staticmethod
+    def _tile_grid(length: int, tile: int, overlap: float) -> List[int]:
+        """Start offsets covering [0, length) with tiles of `tile` px overlapping by `overlap`."""
+        if length <= tile:
+            return [0]
+        stride = max(1, int(tile * (1.0 - overlap)))
+        starts = list(range(0, length - tile, stride))
+        starts.append(length - tile)
+        return sorted(set(starts))
+
+    @classmethod
+    def _run_model_tiled(cls, model, img: np.ndarray, conf_thresh: float, base_tile: int = 640, overlap: float = 0.25):
+        """
+        Tiled inference for large images (stitched mosaics): one whole-image pass plus overlapping tiles at
+        native resolution. All crack masks are merged into one full-size mask; each connected crack region
+        becomes one detection (so cracks crossing tile seams are not split or duplicated).
+        Returns the same (items, plotter) shape as _run_model.
+        """
+        h, w = img.shape[:2]
+        tile = base_tile
+        while len(cls._tile_grid(w, tile, overlap)) * len(cls._tile_grid(h, tile, overlap)) > settings.CRACK_MAX_TILES:
+            tile = int(tile * 1.25)
+
+        union = np.zeros((h, w), dtype=np.uint8)
+        dets = []  # (confidence, cls_id, label, polygon in full-image coords)
+
+        def collect(items, ox: int, oy: int):
+            for cls_id, conf, xyxy, outline, label in items:
+                if outline is not None and len(outline) >= 3:
+                    poly = np.asarray(outline, dtype=np.float32) + [ox, oy]
+                else:  # no mask: use the box
+                    x1, y1, x2, y2 = xyxy
+                    poly = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32) + [ox, oy]
+                cv2.fillPoly(union, [np.round(poly).astype(np.int32)], 255)
+                dets.append((conf, cls_id, label, poly))
+
+        collect(cls._run_model(model, img, conf_thresh)[0], 0, 0)
+        for y0 in cls._tile_grid(h, tile, overlap):
+            for x0 in cls._tile_grid(w, tile, overlap):
+                crop = np.ascontiguousarray(img[y0:y0 + tile, x0:x0 + tile])
+                collect(cls._run_model(model, crop, conf_thresh)[0], x0, y0)
+
+        if not dets:
+            return [], lambda: img.copy()
+
+        # Bridge hairline gaps at tile seams, then label each crack region
+        joined = cv2.dilate(union, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+        n_labels, labels = cv2.connectedComponents(joined)
+
+        best = {}  # component -> (confidence, cls_id, label)
+        for conf, cls_id, label, poly in dets:
+            cx, cy = np.clip(np.round(poly.mean(axis=0)).astype(int), [0, 0], [w - 1, h - 1])
+            comp = labels[cy, cx]
+            if comp == 0:  # centroid outside a thin curved mask: use any vertex inside
+                for vx, vy in np.clip(np.round(poly).astype(int), [0, 0], [w - 1, h - 1]):
+                    if labels[vy, vx]:
+                        comp = labels[vy, vx]
+                        break
+            if comp and (comp not in best or conf > best[comp][0]):
+                best[comp] = (conf, cls_id, label)
+
+        items = []
+        for comp in range(1, n_labels):
+            if comp not in best:
+                continue
+            region = ((labels == comp) & (union > 0)).astype(np.uint8)
+            contours, _ = cv2.findContours(region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                continue
+            outline = max(contours, key=cv2.contourArea).reshape(-1, 2).astype(np.float32)
+            x, y, bw, bh = cv2.boundingRect(region)
+            if max(bw, bh) < settings.CRACK_MIN_SIZE_PX:
+                continue  # dirt speck / texture noise from a high-resolution tile
+            conf, cls_id, label = best[comp]
+            items.append((cls_id, conf, (float(x), float(y), float(x + bw), float(y + bh)), outline, label))
+
+        def plotter():
+            out = img.copy()
+            overlay = img.copy()
+            for _, _, _, outline, _ in items:
+                cv2.fillPoly(overlay, [outline.astype(np.int32)], (255, 56, 56))
+            out = cv2.addWeighted(overlay, 0.5, out, 0.5, 0)
+            lw = max(round(sum(img.shape[:2]) / 2 * 0.003), 2)
+            for _, conf, (x1, y1, x2, y2), _, label in items:
+                cv2.rectangle(out, (int(x1), int(y1)), (int(x2), int(y2)), (255, 56, 56), lw, cv2.LINE_AA)
+                cv2.putText(out, f"{label} {conf:.2f}", (int(x1) + 2, max(int(y1) - 6, 14)),
+                            cv2.FONT_HERSHEY_SIMPLEX, lw / 3, (255, 255, 255), max(lw - 1, 1), cv2.LINE_AA)
+            return out
+
+        return items, plotter
+
+    @staticmethod
     def _run_model(model, img: np.ndarray, conf_thresh: float):
         """
         Runs either backend and returns ([(cls_id, confidence, (x1, y1, x2, y2), outline_or_None, label)], plotter)
@@ -421,7 +512,15 @@ class CrackService:
         # Step 1: Attempt YOLO Model Detection
         if model is not None:
             try:
-                items, plotter = self._run_model(model, img, conf_thresh)
+                use_tiles = (
+                    settings.CRACK_TILE_INFERENCE
+                    and self._custom_model_loaded
+                    and max(orig_h, orig_w) > settings.CRACK_TILE_MIN_SIZE
+                )
+                if use_tiles:
+                    items, plotter = self._run_model_tiled(model, img, conf_thresh)
+                else:
+                    items, plotter = self._run_model(model, img, conf_thresh)
 
                 for cls_id, confidence, xyxy, mask_outline, label_name in items:
                     xmin, ymin, xmax, ymax = xyxy

@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     INFERENCE_THREADS: int = 0
     # Run the OpenCV heuristic detector even when the trained crack model returns no detections
     CRACK_CV_FALLBACK: bool = False
+    # Large images (e.g. stitched mosaics) are scanned as overlapping tiles so thin cracks keep enough pixels
+    CRACK_TILE_INFERENCE: bool = True
+    # Images whose longest side exceeds this many pixels are tiled
+    CRACK_TILE_MIN_SIZE: int = 960
+    # Upper bound on tiles per image (tiles grow when exceeded); lower on slow hosts
+    CRACK_MAX_TILES: int = 12
+    # Merged tiled detections whose longest side is below this (px) are discarded as specks
+    CRACK_MIN_SIZE_PX: int = 24
     # Ground sampling distance of the stitched mosaic; 0 = uncalibrated (sizes reported in pixels only)
     MOSAIC_MM_PER_PIXEL: float = 0.0
 
