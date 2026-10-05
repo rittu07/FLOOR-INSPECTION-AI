@@ -9,6 +9,7 @@ from fastapi import APIRouter, UploadFile, File, Query, HTTPException, status
 
 from app.models.schemas import CrackDetectionResponse, ErrorResponse
 from app.services.crack_service import crack_service
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger("floor_inspection.crack_api")
 
@@ -57,7 +58,8 @@ async def detect_cracks(
                 detail="Uploaded file is empty (0 bytes).",
             )
 
-        response = crack_service.detect_cracks(
+        response = await run_in_threadpool(
+            crack_service.detect_cracks,
             image_bytes=contents,
             filename=file.filename or "upload.jpg",
             confidence_threshold=conf_threshold,

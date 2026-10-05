@@ -1,6 +1,7 @@
 from fastapi import APIRouter, status
 from app.services.mosaic_service import MosaicService
 from app.models.schemas import MosaicCreateRequest, MosaicResponse, MosaicMetadataResponse, ErrorResponse
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/mosaic", tags=["Mosaic"])
 
@@ -18,7 +19,7 @@ async def create_mosaic(payload: MosaicCreateRequest):
     Executes OpenCV sequential floor mosaicking pipeline for 2 to 10 images.
     Preserves frame capture sequence order and records per-step statistics telemetry and homography transforms.
     """
-    return MosaicService.create_mosaic(payload.image_ids)
+    return await run_in_threadpool(MosaicService.create_mosaic, payload.image_ids)
 
 @router.get(
     "/{mosaic_id}",
@@ -32,5 +33,5 @@ async def get_mosaic_metadata(mosaic_id: str):
     """
     Retrieves mosaic metadata, dimensions, image URLs, and frame transformation matrices by ID.
     """
-    return MosaicService.get_mosaic_metadata(mosaic_id)
+    return await run_in_threadpool(MosaicService.get_mosaic_metadata, mosaic_id)
 
