@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   CapturedFrame,
   MosaicResult,
@@ -48,7 +48,7 @@ const defaultSettings: SystemSettings = {
   blendingEnabled: true,
   aiModel: 'YOLOv8-Crack-v2',
   backendUrl: DEFAULT_API_BASE_URL,
-  apiStatus: 'offline',
+  apiStatus: 'checking',
 };
 
 const InspectionContext = createContext<InspectionContextType | undefined>(undefined);
@@ -80,14 +80,21 @@ export function InspectionProvider({ children }: { children: React.ReactNode }) 
     status: 'Ready',
   });
 
-  // Check API health periodically
+  // Check API health periodically (one check at a time: a sleeping free-tier backend can take ~50s to answer)
+  const healthCheckInFlight = useRef(false);
   const checkApiConnection = async () => {
-    const isHealthy = await checkBackendHealth();
-    setSettings((prev) => ({
-      ...prev,
-      backendUrl: getApiBaseUrl(),
-      apiStatus: isHealthy ? 'online' : 'offline',
-    }));
+    if (healthCheckInFlight.current) return;
+    healthCheckInFlight.current = true;
+    try {
+      const isHealthy = await checkBackendHealth();
+      setSettings((prev) => ({
+        ...prev,
+        backendUrl: getApiBaseUrl(),
+        apiStatus: isHealthy ? 'online' : 'offline',
+      }));
+    } finally {
+      healthCheckInFlight.current = false;
+    }
   };
 
   useEffect(() => {

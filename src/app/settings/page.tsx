@@ -240,7 +240,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={isOnline ? 'success' : 'warning'} dot={isOnline}>
-                  {isOnline ? 'Online' : 'Not Connected'}
+                  {isOnline ? 'Online' : settings.apiStatus === 'checking' ? 'Connecting…' : 'Not Connected'}
                 </Badge>
                 <Button
                   variant="outline"

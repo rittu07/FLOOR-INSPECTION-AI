@@ -41,7 +41,7 @@ export const SystemStatus: React.FC = () => {
       name: 'FastAPI Backend Endpoint',
       desc: settings.backendUrl,
       icon: Server,
-      status: isOnline ? 'Online' : 'Not Connected',
+      status: isOnline ? 'Online' : settings.apiStatus === 'checking' ? 'Connecting…' : 'Not Connected',
       variant: isOnline ? 'success' : 'warning',
     },
   ];

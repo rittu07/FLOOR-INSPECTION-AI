@@ -163,7 +163,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <span>Backend API</span>
             </div>
             <Badge variant={isOnline ? 'success' : 'neutral'}>
-              {isOnline ? 'Online' : 'Not Connected'}
+              {isOnline ? 'Online' : settings.apiStatus === 'checking' ? 'Connecting…' : 'Not Connected'}
             </Badge>
           </div>
         </div>
