@@ -10,6 +10,14 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     autoDeploy: true
+    # Only redeploy (and restart) the backend when backend files change, not on frontend pushes
+    buildFilter:
+      paths:
+        - backend/**
+      ignoredPaths:
+        - backend/tests/**
+        - backend/ml/crack_detection/datasets/**
+        - backend/ml/crack_detection/runs/**
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
