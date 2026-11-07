@@ -140,12 +140,14 @@ export default function CrackDetectionPage() {
             <span className="text-slate-400">Conf:</span>
             <input
               type="range"
-              min={0.05}
+              min={0.01}
               max={0.90}
-              step={0.05}
+              step={0.01}
               value={confThreshold}
               onChange={(e) => setConfThreshold(parseFloat(e.target.value))}
-              className="w-16 accent-emerald-400 cursor-pointer"
+              className="w-28 accent-emerald-400 cursor-pointer"
+              aria-label="Detection confidence threshold"
+              title="Lower = finds fainter cracks (and more false detections)"
             />
             <span className="font-mono text-[11px] font-bold text-emerald-400 w-7 text-right">
               {Math.round(confThreshold * 100)}%

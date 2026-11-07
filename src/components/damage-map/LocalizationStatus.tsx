@@ -72,12 +72,14 @@ export const LocalizationStatus: React.FC<LocalizationStatusProps> = ({
           <span>Conf Threshold:</span>
           <input
             type="range"
-            min={0.1}
+            min={0.01}
             max={0.9}
-            step={0.05}
+            step={0.01}
             value={confThreshold}
             onChange={(e) => onConfThresholdChange(parseFloat(e.target.value))}
-            className="w-20 accent-cyan-500 cursor-pointer"
+            className="w-28 accent-cyan-500 cursor-pointer"
+            aria-label="Detection confidence threshold"
+            title="Lower = finds fainter cracks (and more false detections)"
             disabled={status === 'processing'}
           />
           <span className="font-mono font-bold text-cyan-400 w-8 text-right">
