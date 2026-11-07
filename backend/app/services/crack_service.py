@@ -85,42 +85,155 @@ class CrackService:
         starts.append(length - tile)
         return sorted(set(starts))
 
-    @classmethod
-    def _run_model_tiled(cls, model, img: np.ndarray, conf_thresh: float, base_tile: int = 640, overlap: float = 0.25):
+    @staticmethod
+    def _collect(items, union: np.ndarray, dets: list, ox: int = 0, oy: int = 0) -> None:
+        """Adds model detections (outline or box) to the full-image crack mask and detection list."""
+        for cls_id, conf, xyxy, outline, label in items:
+            if outline is not None and len(outline) >= 3:
+                poly = np.asarray(outline, dtype=np.float32) + [ox, oy]
+            else:  # no mask: use the box
+                x1, y1, x2, y2 = xyxy
+                poly = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32) + [ox, oy]
+            cv2.fillPoly(union, [np.round(poly).astype(np.int32)], 255)
+            dets.append((conf, cls_id, label, poly))
+
+    @staticmethod
+    def _grow_along_cracks(img: np.ndarray, seeds: np.ndarray, grow_px: int) -> np.ndarray:
         """
-        Tiled inference for large images (stitched mosaics): one whole-image pass plus overlapping tiles at
-        native resolution. All crack masks are merged into one full-size mask; each connected crack region
-        becomes one detection (so cracks crossing tile seams are not split or duplicated).
-        Returns the same (items, plotter) shape as _run_model.
+        Extends detected cracks along thin dark lines the model scored too low (hairline sections between
+        detected fragments). Candidate pixels come from a multi-scale black-hat filter (dark, thin structures),
+        with long straight lines (tile grout) removed. Growth is geodesic: it only spreads through candidate
+        pixels and at most `grow_px` from a confirmed detection, so isolated stains or texture are not added.
         """
-        h, w = img.shape[:2]
-        tile = base_tile
-        while len(cls._tile_grid(w, tile, overlap)) * len(cls._tile_grid(h, tile, overlap)) > settings.CRACK_MAX_TILES:
-            tile = int(tile * 1.25)
+        h, w = seeds.shape
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+        gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-        union = np.zeros((h, w), dtype=np.uint8)
-        dets = []  # (confidence, cls_id, label, polygon in full-image coords)
+        blackhat = np.maximum(
+            cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))),
+            cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17))),
+        )
+        # Adaptive threshold: clearly darker than the surrounding surface texture
+        background = blackhat[seeds == 0]
+        if background.size == 0:
+            return seeds
+        threshold = max(float(settings.CRACK_GROW_MIN_CONTRAST), float(np.percentile(background, settings.CRACK_GROW_PERCENTILE)))
+        candidates = (blackhat > threshold).astype(np.uint8) * 255
 
-        def collect(items, ox: int, oy: int):
-            for cls_id, conf, xyxy, outline, label in items:
-                if outline is not None and len(outline) >= 3:
-                    poly = np.asarray(outline, dtype=np.float32) + [ox, oy]
-                else:  # no mask: use the box
-                    x1, y1, x2, y2 = xyxy
-                    poly = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32) + [ox, oy]
-                cv2.fillPoly(union, [np.round(poly).astype(np.int32)], 255)
-                dets.append((conf, cls_id, label, poly))
+        # Long perfectly straight horizontal/vertical runs are tile grout, not cracks
+        run = max(81, min(h, w) // 4)  # grout joints are long; short straight stretches can be real crack
+        straight = cv2.add(
+            cv2.morphologyEx(candidates, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (run, 1))),
+            cv2.morphologyEx(candidates, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, run))),
+        )
+        candidates = cv2.subtract(candidates, cv2.dilate(straight, np.ones((3, 3), np.uint8)))
 
-        collect(cls._run_model(model, img, conf_thresh)[0], 0, 0)
-        for y0 in cls._tile_grid(h, tile, overlap):
-            for x0 in cls._tile_grid(w, tile, overlap):
-                crop = np.ascontiguousarray(img[y0:y0 + tile, x0:x0 + tile])
-                collect(cls._run_model(model, crop, conf_thresh)[0], x0, y0)
+        allowed = cv2.bitwise_or(candidates, seeds)
+        grown = seeds.copy()
+        step = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # ~2 px per iteration
+        for _ in range(max(1, grow_px // 2)):
+            nxt = cv2.bitwise_and(cv2.dilate(grown, step), allowed)
+            if np.array_equal(nxt, grown):
+                break
+            grown = nxt
 
+        # Keep only grown pieces that look like missing crack: bridges joining two separate detections, or
+        # long hairline-thin tails. Side shading, stains and blobs touched by the growth are discarded.
+        extra = cv2.subtract(grown, seeds)
+        n_extra, extra_labels, stats, _ = cv2.connectedComponentsWithStats(extra, connectivity=8)
+        if n_extra <= 1:
+            return seeds
+        _, seed_labels = cv2.connectedComponents(cv2.dilate(seeds, np.ones((3, 3), np.uint8)), connectivity=8)
+        # A missing hairline continues from where a detected fragment stops; tile grout crossing a crack
+        # branches off its middle. So grown pieces must start at a crack end (centreline endpoint).
+        end_zone = cv2.dilate(
+            CrackService._centreline_endpoints(seeds),
+            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * settings.CRACK_END_RADIUS_PX + 1,) * 2),
+        )
+        ring_kernel = np.ones((5, 5), np.uint8)
+        kept = seeds.copy()
+        for i in range(1, n_extra):
+            x, y, bw, bh, area = stats[i]
+            x0, y0 = max(0, x - 3), max(0, y - 3)
+            x1, y1 = min(w, x + bw + 3), min(h, y + bh + 3)
+            piece = (extra_labels[y0:y1, x0:x1] == i).astype(np.uint8)
+            contact = cv2.dilate(piece, ring_kernel) > 0
+            if not np.any(end_zone[y0:y1, x0:x1][contact]):
+                continue  # starts from the side of a crack (grout, shading, stain), not from its end
+            touched = np.unique(seed_labels[y0:y1, x0:x1][contact])
+            is_bridge = np.count_nonzero(touched) >= 2
+            length = cv2.countNonZero(CrackService._thin(piece * 255))
+            # One path, not a network: total centreline length close to its bounding-box diagonal.
+            # Grout grids ("+" crossings) pack several lines into one box (ratio 1.7-3.2 vs <= 1.4 for cracks).
+            if length / max(np.hypot(bw, bh), 1.0) > settings.CRACK_GROW_MAX_PATH_RATIO:
+                continue
+            # A bridge is grown from both ends (<= 2x growth distance); a tail from one end
+            if length > (2.0 if is_bridge else 1.2) * grow_px:
+                continue
+            if not is_bridge:
+                is_tail = length >= 20 and area / max(length, 1) <= settings.CRACK_TAIL_MAX_WIDTH_PX
+                if not is_tail:
+                    continue
+            kept[y0:y1, x0:x1][piece > 0] = 255
+        return kept
+
+    @staticmethod
+    def _thin(mask: np.ndarray) -> np.ndarray:
+        """Zhang-Suen thinning to a 1-px centreline (NumPy only). Input/output: uint8 0/255."""
+        img = (mask > 0).astype(np.uint8)
+        img = np.pad(img, 1)
+        while True:
+            changed = False
+            for step in (0, 1):
+                p2, p3, p4 = img[:-2, 1:-1], img[:-2, 2:], img[1:-1, 2:]
+                p5, p6, p7 = img[2:, 2:], img[2:, 1:-1], img[2:, :-2]
+                p8, p9 = img[1:-1, :-2], img[:-2, :-2]
+                neighbours = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9
+                seq = [p2, p3, p4, p5, p6, p7, p8, p9, p2]
+                transitions = sum(((seq[k] == 0) & (seq[k + 1] == 1)).astype(np.uint8) for k in range(8))
+                if step == 0:
+                    cond = (p2 * p4 * p6 == 0) & (p4 * p6 * p8 == 0)
+                else:
+                    cond = (p2 * p4 * p8 == 0) & (p2 * p6 * p8 == 0)
+                remove = (img[1:-1, 1:-1] == 1) & (neighbours >= 2) & (neighbours <= 6) & (transitions == 1) & cond
+                if remove.any():
+                    img[1:-1, 1:-1][remove] = 0
+                    changed = True
+            if not changed:
+                break
+        return img[1:-1, 1:-1] * 255
+
+    @staticmethod
+    def _centreline_endpoints(mask: np.ndarray) -> np.ndarray:
+        """Pixels where a crack's centreline ends (exactly one centreline neighbour). uint8 0/255."""
+        centre = (CrackService._thin(mask) > 0).astype(np.uint8)
+        neighbours = cv2.filter2D(centre, -1, np.ones((3, 3), np.float32), borderType=cv2.BORDER_CONSTANT) - centre
+        return ((centre == 1) & (neighbours == 1)).astype(np.uint8) * 255
+
+    @staticmethod
+    def _skeletonize(mask: np.ndarray) -> np.ndarray:
+        """Morphological skeleton of a binary mask (no opencv-contrib dependency)."""
+        skeleton = np.zeros_like(mask)
+        work = mask.copy()
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        while cv2.countNonZero(work):
+            eroded = cv2.erode(work, kernel)
+            skeleton = cv2.bitwise_or(skeleton, cv2.subtract(work, cv2.dilate(eroded, kernel)))
+            work = eroded
+        return skeleton
+
+    @staticmethod
+    def _merge_regions(img: np.ndarray, union: np.ndarray, dets: list):
+        """
+        Turns the full-image crack mask into detections: each connected crack region (fragments joined by
+        hairline growth or tile seams) becomes one crack with its outline, box and best confidence.
+        Returns (items, plotter) like _run_model.
+        """
+        h, w = union.shape
         if not dets:
             return [], lambda: img.copy()
 
-        # Bridge hairline gaps at tile seams, then label each crack region
         joined = cv2.dilate(union, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
         n_labels, labels = cv2.connectedComponents(joined)
 
@@ -147,7 +260,7 @@ class CrackService:
             outline = max(contours, key=cv2.contourArea).reshape(-1, 2).astype(np.float32)
             x, y, bw, bh = cv2.boundingRect(region)
             if max(bw, bh) < settings.CRACK_MIN_SIZE_PX:
-                continue  # dirt speck / texture noise from a high-resolution tile
+                continue  # dirt speck / texture noise
             conf, cls_id, label = best[comp]
             items.append((cls_id, conf, (float(x), float(y), float(x + bw), float(y + bh)), outline, label))
 
@@ -165,6 +278,31 @@ class CrackService:
             return out
 
         return items, plotter
+
+    @classmethod
+    def _run_model_refined(cls, model, img: np.ndarray, conf_thresh: float, tiled: bool):
+        """
+        Model detections (optionally tiled for large images) -> one crack mask -> hairline growth ->
+        connected cracks. Returns (items, plotter) like _run_model.
+        """
+        h, w = img.shape[:2]
+        union = np.zeros((h, w), dtype=np.uint8)
+        dets: list = []
+
+        cls._collect(cls._run_model(model, img, conf_thresh)[0], union, dets)
+        if tiled:
+            overlap = 0.25
+            tile = 640
+            while len(cls._tile_grid(w, tile, overlap)) * len(cls._tile_grid(h, tile, overlap)) > settings.CRACK_MAX_TILES:
+                tile = int(tile * 1.25)
+            for y0 in cls._tile_grid(h, tile, overlap):
+                for x0 in cls._tile_grid(w, tile, overlap):
+                    crop = np.ascontiguousarray(img[y0:y0 + tile, x0:x0 + tile])
+                    cls._collect(cls._run_model(model, crop, conf_thresh)[0], union, dets, x0, y0)
+
+        if dets and settings.CRACK_GROW_PX > 0:
+            union = cls._grow_along_cracks(img, union, settings.CRACK_GROW_PX)
+        return cls._merge_regions(img, union, dets)
 
     @staticmethod
     def _run_model(model, img: np.ndarray, conf_thresh: float):
@@ -517,8 +655,8 @@ class CrackService:
                     and self._custom_model_loaded
                     and max(orig_h, orig_w) > settings.CRACK_TILE_MIN_SIZE
                 )
-                if use_tiles:
-                    items, plotter = self._run_model_tiled(model, img, conf_thresh)
+                if self._custom_model_loaded:
+                    items, plotter = self._run_model_refined(model, img, conf_thresh, tiled=use_tiles)
                 else:
                     items, plotter = self._run_model(model, img, conf_thresh)
 

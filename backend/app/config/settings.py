@@ -51,6 +51,19 @@ class Settings(BaseSettings):
     CRACK_MAX_TILES: int = 12
     # Merged tiled detections whose longest side is below this (px) are discarded as specks
     CRACK_MIN_SIZE_PX: int = 24
+    # Grow detected cracks along thin dark lines (hairline sections the model scored low) up to this many px;
+    # 0 disables. Growth stays connected to model detections, so isolated dark marks are not added.
+    CRACK_GROW_PX: int = 120
+    # Minimum black-hat contrast (0-255) for a pixel to count as part of a dark hairline during growth
+    CRACK_GROW_MIN_CONTRAST: int = 12
+    # Pixels darker-than-surroundings above this percentile of the image count as hairline candidates
+    CRACK_GROW_PERCENTILE: float = 90.0
+    # A grown piece not bridging two detections is kept only if hairline-thin (mean width in px)
+    CRACK_TAIL_MAX_WIDTH_PX: float = 4.0
+    # Grown pieces must start within this distance (px) of a detected crack's end
+    CRACK_END_RADIUS_PX: int = 8
+    # Grown pieces whose centreline length exceeds this x their bounding-box diagonal are networks (grout), not cracks
+    CRACK_GROW_MAX_PATH_RATIO: float = 1.45
     # Ground sampling distance of the stitched mosaic; 0 = uncalibrated (sizes reported in pixels only)
     MOSAIC_MM_PER_PIXEL: float = 0.0
 

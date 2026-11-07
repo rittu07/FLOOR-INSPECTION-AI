@@ -84,3 +84,43 @@ def test_tile_grid_covers_image_with_overlap():
     assert starts[0] == 0 and starts[-1] == 1500 - 640
     # consecutive tiles overlap, so no pixel column is left uncovered
     assert all(b - a < 640 for a, b in zip(starts, starts[1:]))
+
+
+def _surface(h=200, w=400):
+    rng = np.random.default_rng(1)
+    return np.clip(rng.normal(170, 6, (h, w, 3)), 0, 255).astype(np.uint8)
+
+
+def test_growth_bridges_hairline_gap_between_fragments():
+    from app.services.crack_service import CrackService
+
+    img = _surface()
+    # one wavy hairline crack across the image
+    pts = np.array([[x, 100 + int(8 * np.sin(x / 25))] for x in range(20, 380)], np.int32)
+    cv2.polylines(img, [pts], False, (60, 60, 60), 2)
+    # the model only found its two ends (seeds); the middle 80 px is the missed hairline
+    seeds = np.zeros(img.shape[:2], np.uint8)
+    cv2.polylines(seeds, [pts[pts[:, 0] < 160]], False, 255, 5)
+    cv2.polylines(seeds, [pts[pts[:, 0] > 240]], False, 255, 5)
+
+    grown = CrackService._grow_along_cracks(img, seeds, 120)
+
+    gap = (pts[:, 0] > 170) & (pts[:, 0] < 230)
+    covered = [grown[y, x] > 0 for x, y in pts[gap]]
+    assert np.mean(covered) > 0.9
+    assert cv2.connectedComponents(cv2.dilate(grown, np.ones((5, 5), np.uint8)))[0] - 1 == 1
+
+
+def test_growth_ignores_grout_crossing_middle_of_crack():
+    from app.services.crack_service import CrackService
+
+    img = _surface()
+    cv2.line(img, (20, 100), (380, 110), (60, 60, 60), 3)       # crack, fully detected
+    cv2.line(img, (200, 0), (203, 199), (90, 90, 90), 2)          # grout joint crossing its middle
+    seeds = np.zeros(img.shape[:2], np.uint8)
+    cv2.line(seeds, (20, 100), (380, 110), 255, 7)
+
+    grown = CrackService._grow_along_cracks(img, seeds, 120)
+
+    added = (grown > 0) & (seeds == 0)
+    assert added[:85, 190:215].sum() == 0 and added[125:, 190:215].sum() == 0
